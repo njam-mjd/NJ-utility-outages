@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NJ Power Outages</title>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#101a2f; --muted:#9fb0d0; --text:#e8efff;
+      --line:rgba(255,255,255,.10); --good:#34d399; --warn:#fbbf24; --bad:#fb7185;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      background:linear-gradient(180deg,#070b14 0%, #0b1220 60%, #070b14 100%);
+      color:var(--text); padding:18px;
+    }
+    .wrap{max-width:920px;margin:0 auto}
+    .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+    .title{line-height:1.15}
+    h1{margin:0;font-size:22px;font-weight:750;letter-spacing:.2px}
+    .sub{margin-top:6px;color:var(--muted);font-size:13px}
+    .pillrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .pill{border:1px solid var(--line);background:rgba(255,255,255,.04);
+      padding:6px 10px;border-radius:999px;font-size:12px;color:var(--muted)
+    }
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+    .card{grid-column:span 12;background:rgba(16,26,47,.86);
+      border:1px solid var(--line); border-radius:16px; padding:14px 14px 12px;
+      box-shadow:0 10px 28px rgba(0,0,0,.25);
+    }
+    @media(min-width:720px){
+      .card{grid-column:span 6}
+      .card.total{grid-column:span 12}
+    }
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .name{font-weight:700}
+    .meta{color:var(--muted);font-size:12px;margin-top:2px}
+    .big{font-size:34px;font-weight:850;letter-spacing:.2px;margin:10px 0 2px}
+    .small{font-size:12px;color:var(--muted)}
+    .status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+    .dot{width:9px;height:9px;border-radius:50%}
+    .dot.ok{background:var(--good)}
+    .dot.warn{background:var(--warn)}
+    .dot.bad{background:var(--bad)}
+    .btns{display:flex;gap:8px}
+    button{
+      appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.04);
+      color:var(--text);padding:8px 10px;border-radius:10px;font-weight:650;
+      cursor:pointer;font-size:12px
+    }
+    button:hover{background:rgba(255,255,255,.07)}
+    a{color:#b7ccff;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .foot{margin-top:12px;color:var(--muted);font-size:12px}
+    .err{color:var(--bad);font-size:12px;margin-top:8px;display:none}
+    .note{color:var(--muted);font-size:12px;margin-top:8px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="title">
+        <h1>New Jersey Power Outages</h1>
+        <div class="sub">Live totals from the utilities’ outage-map data feeds (auto-refresh).</div>
+        <div class="pillrow">
+          <div class="pill">Refresh: <span class="mono" id="refreshEvery">120s</span></div>
+          <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
+          <div class="pill">Data source: KUBRA Storm Center <span class="mono">currentState</span></div>
+        </div>
+      </div>
+      <div class="btns">
+        <button id="refreshBtn" title="Refresh now">Refresh</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card total" id="totalCard">
+        <div class="row">
+          <div>
+            <div class="name">Statewide total (NJ-only)</div>
+            <div class="meta">Sum of the utilities below (where available as NJ-only totals).</div>
+          </div>
+          <div class="status" id="totalStatus">
+            <span class="dot warn"></span><span id="totalStatusText">Loading…</span>
+          </div>
+        </div>
+        <div class="big" id="totalOut">—</div>
+        <div class="small" id="totalDetail">—</div>
+        <div class="err" id="totalErr"></div>
+        <div class="note">
+          If any utility feed can’t be accessed due to CORS or schema changes, its card will show an error and it won’t be included in the statewide sum.
+        </div>
+      </div>
+
+      <div class="card" id="card-jcpl">
+        <div class="row">
+          <div>
+            <div class="name">JCP&amp;L (FirstEnergy)</div>
+            <div class="meta"><a href="https://www.firstenergycorp.com/jersey_central_power_light.html" target="_blank" rel="noreferrer">Utility site</a></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-jcpl"></span><span id="st-jcpl">Loading…</span></div>
+        </div>
+        <div class="big" id="out-jcpl">—</div>
+        <div class="small" id="dt-jcpl">—</div>
+        <div class="err" id="err-jcpl"></div>
+      </div>
+
+      <div class="card" id="card-pseg">
+        <div class="row">
+          <div>
+            <div class="name">PSE&amp;G</div>
+            <div class="meta"><a href="https://nj.pseg.com/" target="_blank" rel="noreferrer">Utility site</a></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-pseg"></span><span id="st-pseg">Loading…</span></div>
+        </div>
+        <div class="big" id="out-pseg">—</div>
+        <div class="small" id="dt-pseg">—</div>
+        <div class="err" id="err-pseg"></div>
+      </div>
+
+      <div class="card" id="card-ace">
+        <div class="row">
+          <div>
+            <div class="name">Atlantic City Electric</div>
+            <div class="meta"><a href="https://www.atlanticcityelectric.com/" target="_blank" rel="noreferrer">Utility site</a></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-ace"></span><span id="st-ace">Loading…</span></div>
+        </div>
+        <div class="big" id="out-ace">—</div>
+        <div class="small" id="dt-ace">—</div>
+        <div class="err" id="err-ace"></div>
+      </div>
+
+      <div class="card" id="card-oru">
+        <div class="row">
+          <div>
+            <div class="name">Orange &amp; Rockland (ORU)</div>
+            <div class="meta"><a href="https://www.oru.com/en" target="_blank" rel="noreferrer">Utility site</a></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Loading…</span></div>
+        </div>
+        <div class="big" id="out-oru">—</div>
+        <div class="small" id="dt-oru">—</div>
+        <div class="err" id="err-oru"></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      Embed example:
+      <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="520" style="border:0"&gt;&lt;/iframe&gt;</span>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Your provided currentState endpoints (3 feeds wired).
+     *  - If you paste the ORU currentState URL later, drop it in the same way.
+     */
+    const UTILITIES = [
+      // Endpoint 1:
+      // https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false
+      {
+        key: "jcpl",
+        label: "JCP&L (FirstEnergy)",
+        instanceId: "6c715f0e-bbec-465f-98cc-0b81623744be",
+        viewId:     "fcd7c23d-de37-4471-8ca3-37c3260f94fa",
+        njOnly: true
+      },
+
+      // Endpoint 2:
+      // https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false
+      {
+        key: "pseg",
+        label: "PSE&G",
+        instanceId: "79d82478-c10a-4956-a045-89de3cda618c",
+        viewId:     "bdb7f5be-1c1a-46fa-862e-ebdf21851d2e",
+        njOnly: true
+      },
+
+      // Endpoint 3:
+      // https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false
+      {
+        key: "ace",
+        label: "Atlantic City Electric",
+        instanceId: "4b4c1b8f-d2fe-4d2a-877d-a704f764db98",
+        viewId:     "addc2ec9-6104-4ea0-9da5-ff5ba896437e",
+        njOnly: true
+      },
+
+      // ORU not provided yet — this card will show "Setup needed"
+      {
+        key: "oru",
+        label: "Orange & Rockland (ORU)",
+        instanceId: "INSTANCE_ID_HERE",
+        viewId:     "VIEW_ID_HERE",
+        njOnly: true
+      }
+    ];
+
+    const REFRESH_MS = 120000;
+    document.getElementById("refreshEvery").textContent = (REFRESH_MS/1000) + "s";
+
+    function setDot(key, state){
+      const dot = document.getElementById(`dot-${key}`);
+      dot.classList.remove("ok","warn","bad");
+      dot.classList.add(state);
+    }
+
+    function setStatus(key, text, state){
+      document.getElementById(`st-${key}`).textContent = text;
+      setDot(key, state);
+    }
+
+    function showErr(key, msg){
+      const el = document.getElementById(`err-${key}`);
+      el.style.display = "block";
+      el.textContent = msg;
+      setStatus(key, "Error", "bad");
+    }
+
+    function clearErr(key){
+      const el = document.getElementById(`err-${key}`);
+      el.style.display = "none";
+      el.textContent = "";
+    }
+
+    function fmt(n){
+      if (n === null || n === undefined || Number.isNaN(n)) return "—";
+      return new Intl.NumberFormat("en-US").format(n);
+    }
+
+    // Heuristic extractor: searches common KUBRA summary fields recursively.
+    function extractSummary(json){
+      const wantedKeys = new Set([
+        "customersOut","customers_out","customersWithoutService",
+        "affectedCustomers","affected_customers","customersAffected","customers_affected",
+        "totalCustomersAffected","total_customers_affected"
+      ]);
+
+      const timeKeys = new Set(["lastUpdated","last_updated","updatedAt","updated_at","timestamp","generatedAt"]);
+
+      let foundOut = null;
+      let foundUpdated = null;
+
+      function walk(node){
+        if (!node || typeof node !== "object") return;
+        for (const [k,v] of Object.entries(node)){
+          if (v && typeof v === "object") walk(v);
+
+          if (foundOut === null && wantedKeys.has(k) && typeof v === "number"){
+            foundOut = v;
+          }
+          if (foundUpdated === null && timeKeys.has(k) && (typeof v === "string" || typeof v === "number")){
+            foundUpdated = v;
+          }
+        }
+      }
+      walk(json);
+
+      return { customersOut: foundOut, updatedRaw: foundUpdated };
+    }
+
+    function toLocalTimeString(updatedRaw){
+      if (!updatedRaw) return null;
+
+      if (typeof updatedRaw === "number"){
+        const ms = updatedRaw < 2e10 ? updatedRaw * 1000 : updatedRaw;
+        return new Date(ms).toLocaleString();
+      }
+      const d = new Date(updatedRaw);
+      if (!Number.isNaN(d.getTime())) return d.toLocaleString();
+      return String(updatedRaw);
+    }
+
+    async function fetchCurrentState(instanceId, viewId){
+      const url = `https://kubra.io/stormcenter/api/v1/stormcenters/${instanceId}/views/${viewId}/currentState?preview=false`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    }
+
+    async function refresh(){
+      const lastUpdatedEl = document.getElementById("lastUpdated");
+      lastUpdatedEl.textContent = "Loading…";
+
+      let total = 0;
+      let included = 0;
+      let totalErrors = 0;
+
+      for (const u of UTILITIES){
+        clearErr(u.key);
+
+        if (u.instanceId.includes("INSTANCE_ID") || u.viewId.includes("VIEW_ID")){
+          document.getElementById(`out-${u.key}`).textContent = "—";
+          document.getElementById(`dt-${u.key}`).textContent = "Set IDs in code";
+          setStatus(u.key, "Setup needed", "warn");
+          totalErrors++;
+          continue;
+        }
+
+        try{
+          setStatus(u.key, "Updating…", "warn");
+          const json = await fetchCurrentState(u.instanceId, u.viewId);
+
+          const { customersOut, updatedRaw } = extractSummary(json);
+          const updated = toLocalTimeString(updatedRaw);
+
+          if (!u.njOnly){
+            throw new Error("This feed isn’t configured as NJ-only yet (njOnly=false).");
+          }
+
+          if (typeof customersOut !== "number"){
+            throw new Error("Could not find outage total in response (schema change). See console.");
+          }
+
+          document.getElementById(`out-${u.key}`).textContent = fmt(customersOut);
+          document.getElementById(`dt-${u.key}`).textContent = updated ? `Last updated: ${updated}` : "Last updated: (not provided)";
+          setStatus(u.key, "OK", "ok");
+
+          total += customersOut;
+          included++;
+        }catch(err){
+          console.error("Fetch error:", u.key, err);
+          showErr(u.key, `Couldn’t load data (${u.label}). ${err.message || err}`);
+          document.getElementById(`out-${u.key}`).textContent = "—";
+          document.getElementById(`dt-${u.key}`).textContent = "—";
+          totalErrors++;
+        }
+      }
+
+      const totalOutEl = document.getElementById("totalOut");
+      const totalDetailEl = document.getElementById("totalDetail");
+      const totalStatusDot = document.querySelector("#totalStatus .dot");
+      const totalStatusText = document.getElementById("totalStatusText");
+      const totalErrEl = document.getElementById("totalErr");
+
+      if (included > 0){
+        totalOutEl.textContent = fmt(total);
+        totalDetailEl.textContent = `Included ${included} utility feed(s). ${totalErrors ? `${totalErrors} had errors/setup needed.` : ""}`.trim();
+
+        totalStatusDot.classList.remove("ok","warn","bad");
+        totalStatusDot.classList.add(totalErrors ? "warn" : "ok");
+        totalStatusText.textContent = totalErrors ? "Partial" : "OK";
+
+        totalErrEl.style.display = "none";
+        totalErrEl.textContent = "";
+      }else{
+        totalOutEl.textContent = "—";
+        totalDetailEl.textContent = "No feeds loaded yet.";
+        totalStatusDot.classList.remove("ok","warn","bad");
+        totalStatusDot.classList.add("bad");
+        totalStatusText.textContent = "Not available";
+
+        totalErrEl.style.display = "block";
+        totalErrEl.textContent = "Set the KUBRA INSTANCE_ID/VIEW_ID values in UTILITIES (and ensure the endpoints allow browser access).";
+      }
+
+      lastUpdatedEl.textContent = new Date().toLocaleString();
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>
