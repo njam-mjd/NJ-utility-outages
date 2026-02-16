@@ -52,7 +52,7 @@
     a{color:#b7ccff;text-decoration:none}
     a:hover{text-decoration:underline}
     .foot{margin-top:12px;color:var(--muted);font-size:12px}
-    .err{color:var(--bad);font-size:12px;margin-top:8px;display:none}
+    .err{color:var(--bad);font-size:12px;margin-top:8px;display:none;white-space:pre-wrap}
     .note{color:var(--muted);font-size:12px;margin-top:8px}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
   </style>
@@ -66,7 +66,7 @@
         <div class="pillrow">
           <div class="pill">Refresh: <span class="mono" id="refreshEvery">120s</span></div>
           <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
-          <div class="pill">Data source: KUBRA Storm Center <span class="mono">currentState</span></div>
+          <div class="pill">Source: KUBRA Storm Center <span class="mono">currentState → interval_generation_data</span></div>
         </div>
       </div>
       <div class="btns">
@@ -79,7 +79,7 @@
         <div class="row">
           <div>
             <div class="name">Statewide total (NJ-only)</div>
-            <div class="meta">Sum of the utilities below (where available as NJ-only totals).</div>
+            <div class="meta">Sum of the utility totals that successfully load.</div>
           </div>
           <div class="status" id="totalStatus">
             <span class="dot warn"></span><span id="totalStatusText">Loading…</span>
@@ -89,7 +89,7 @@
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
         <div class="note">
-          If any utility feed can’t be accessed due to CORS or schema changes, its card will show an error and it won’t be included in the statewide sum.
+          If you see “CORS blocked,” use the proxy option below (Cloudflare Worker) and point the widget at your proxy URLs.
         </div>
       </div>
 
@@ -138,7 +138,7 @@
             <div class="name">Orange &amp; Rockland (ORU)</div>
             <div class="meta"><a href="https://www.oru.com/en" target="_blank" rel="noreferrer">Utility site</a></div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Loading…</span></div>
+          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Setup needed</span></div>
         </div>
         <div class="big" id="out-oru">—</div>
         <div class="small" id="dt-oru">—</div>
@@ -147,56 +147,30 @@
     </div>
 
     <div class="foot">
-      Embed example:
+      Embed:
       <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="520" style="border:0"&gt;&lt;/iframe&gt;</span>
     </div>
   </div>
 
   <script>
-    /**
-     * Your provided currentState endpoints (3 feeds wired).
-     *  - If you paste the ORU currentState URL later, drop it in the same way.
-     */
-    const UTILITIES = [
-      // Endpoint 1:
-      // https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false
-      {
-        key: "jcpl",
-        label: "JCP&L (FirstEnergy)",
-        instanceId: "6c715f0e-bbec-465f-98cc-0b81623744be",
-        viewId:     "fcd7c23d-de37-4471-8ca3-37c3260f94fa",
-        njOnly: true
-      },
+    // If you end up needing a proxy, set PROXY_PREFIX to your proxy base
+    // and the code will call: `${PROXY_PREFIX}${encodeURIComponent(realUrl)}`
+    // Example: PROXY_PREFIX = "https://YOURWORKER.your-subdomain.workers.dev/?url="
+    const PROXY_PREFIX = ""; // leave "" unless you deploy a proxy
 
-      // Endpoint 2:
-      // https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false
-      {
-        key: "pseg",
-        label: "PSE&G",
-        instanceId: "79d82478-c10a-4956-a045-89de3cda618c",
-        viewId:     "bdb7f5be-1c1a-46fa-862e-ebdf21851d2e",
-        njOnly: true
-      },
+    const ENDPOINTS = {
+      jcpl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
+      pseg: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
+      ace:  "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false"
+      // ORU goes here when you paste it
+    };
 
-      // Endpoint 3:
-      // https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false
-      {
-        key: "ace",
-        label: "Atlantic City Electric",
-        instanceId: "4b4c1b8f-d2fe-4d2a-877d-a704f764db98",
-        viewId:     "addc2ec9-6104-4ea0-9da5-ff5ba896437e",
-        njOnly: true
-      },
-
-      // ORU not provided yet — this card will show "Setup needed"
-      {
-        key: "oru",
-        label: "Orange & Rockland (ORU)",
-        instanceId: "INSTANCE_ID_HERE",
-        viewId:     "VIEW_ID_HERE",
-        njOnly: true
-      }
-    ];
+    const META = {
+      jcpl: { label: "JCP&L (FirstEnergy)" },
+      pseg: { label: "PSE&G" },
+      ace:  { label: "Atlantic City Electric" },
+      oru:  { label: "Orange & Rockland (ORU)" }
+    };
 
     const REFRESH_MS = 120000;
     document.getElementById("refreshEvery").textContent = (REFRESH_MS/1000) + "s";
@@ -206,64 +180,28 @@
       dot.classList.remove("ok","warn","bad");
       dot.classList.add(state);
     }
-
     function setStatus(key, text, state){
       document.getElementById(`st-${key}`).textContent = text;
       setDot(key, state);
     }
-
     function showErr(key, msg){
       const el = document.getElementById(`err-${key}`);
       el.style.display = "block";
       el.textContent = msg;
       setStatus(key, "Error", "bad");
     }
-
     function clearErr(key){
       const el = document.getElementById(`err-${key}`);
       el.style.display = "none";
       el.textContent = "";
     }
-
     function fmt(n){
       if (n === null || n === undefined || Number.isNaN(n)) return "—";
       return new Intl.NumberFormat("en-US").format(n);
     }
 
-    // Heuristic extractor: searches common KUBRA summary fields recursively.
-    function extractSummary(json){
-      const wantedKeys = new Set([
-        "customersOut","customers_out","customersWithoutService",
-        "affectedCustomers","affected_customers","customersAffected","customers_affected",
-        "totalCustomersAffected","total_customers_affected"
-      ]);
-
-      const timeKeys = new Set(["lastUpdated","last_updated","updatedAt","updated_at","timestamp","generatedAt"]);
-
-      let foundOut = null;
-      let foundUpdated = null;
-
-      function walk(node){
-        if (!node || typeof node !== "object") return;
-        for (const [k,v] of Object.entries(node)){
-          if (v && typeof v === "object") walk(v);
-
-          if (foundOut === null && wantedKeys.has(k) && typeof v === "number"){
-            foundOut = v;
-          }
-          if (foundUpdated === null && timeKeys.has(k) && (typeof v === "string" || typeof v === "number")){
-            foundUpdated = v;
-          }
-        }
-      }
-      walk(json);
-
-      return { customersOut: foundOut, updatedRaw: foundUpdated };
-    }
-
     function toLocalTimeString(updatedRaw){
       if (!updatedRaw) return null;
-
       if (typeof updatedRaw === "number"){
         const ms = updatedRaw < 2e10 ? updatedRaw * 1000 : updatedRaw;
         return new Date(ms).toLocaleString();
@@ -273,95 +211,120 @@
       return String(updatedRaw);
     }
 
-    async function fetchCurrentState(instanceId, viewId){
-      const url = `https://kubra.io/stormcenter/api/v1/stormcenters/${instanceId}/views/${viewId}/currentState?preview=false`;
-      const res = await fetch(url, { cache: "no-store" });
+    function proxied(url){
+      return PROXY_PREFIX ? (PROXY_PREFIX + encodeURIComponent(url)) : url;
+    }
+
+    async function fetchJson(url){
+      // If CORS blocks, fetch() throws TypeError in browser.
+      const res = await fetch(proxied(url), { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     }
 
+    // KUBRA currentState gives you data pointers like "data/<uuid>".
+    // We'll build a second URL by stripping after /views/<VIEW_ID>/ and appending that relative path.
+    function buildSecondUrl(currentStateUrl, relativePath){
+      const parts = currentStateUrl.split("/currentState?")[0]; // .../views/<viewId>
+      return `${parts}/${relativePath}`;
+    }
+
+    // Pull the outage count from interval_generation_data (schema varies by utility),
+    // so we use robust heuristics: check common keys, otherwise choose the largest plausible count.
+    function extractCustomersOutFromInterval(intervalJson){
+      const preferredKeys = new Set([
+        "customersOut","customers_out","customersWithoutService",
+        "affectedCustomers","affected_customers","customersAffected","customers_affected",
+        "totalCustomersAffected","total_customers_affected",
+        "cust_out","custOut","cust_without_service","customers_without_service"
+      ]);
+
+      let best = null;
+
+      function consider(v){
+        if (typeof v !== "number") return;
+        if (!Number.isFinite(v)) return;
+        // plausible NJ utility scale guardrail
+        if (v < 0 || v > 20000000) return;
+        if (best === null || v > best) best = v;
+      }
+
+      function walk(node){
+        if (!node || typeof node !== "object") return;
+        for (const [k,v] of Object.entries(node)){
+          if (typeof v === "number"){
+            if (preferredKeys.has(k)) {
+              // prefer direct match immediately
+              consider(v);
+            } else {
+              // still consider numeric values (some feeds store totals under generic keys)
+              consider(v);
+            }
+          } else if (v && typeof v === "object"){
+            walk(v);
+          }
+        }
+      }
+
+      walk(intervalJson);
+      return best;
+    }
+
+    async function getUtilityOutages(key){
+      const currentStateUrl = ENDPOINTS[key];
+      if (!currentStateUrl) throw new Error("No endpoint configured.");
+
+      const currentState = await fetchJson(currentStateUrl);
+
+      // These fields are visible in your currentState payloads. :contentReference[oaicite:1]{index=1}
+      const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
+      const intervalPath = currentState?.data?.interval_generation_data;
+
+      if (!intervalPath) {
+        throw new Error("currentState missing data.interval_generation_data (schema changed).");
+      }
+
+      const intervalUrl = buildSecondUrl(currentStateUrl, intervalPath);
+      const intervalJson = await fetchJson(intervalUrl);
+
+      const customersOut = extractCustomersOutFromInterval(intervalJson);
+
+      if (typeof customersOut !== "number") {
+        // Show useful debug (but not huge)
+        const keys = Object.keys(intervalJson || {}).slice(0, 30).join(", ");
+        throw new Error("Could not locate outage total in interval file. Top-level keys: " + keys);
+      }
+
+      return {
+        customersOut,
+        updatedAtLocal: toLocalTimeString(updatedAt)
+      };
+    }
+
     async function refresh(){
-      const lastUpdatedEl = document.getElementById("lastUpdated");
-      lastUpdatedEl.textContent = "Loading…";
+      document.getElementById("lastUpdated").textContent = "Loading…";
 
       let total = 0;
       let included = 0;
-      let totalErrors = 0;
+      let errors = 0;
 
-      for (const u of UTILITIES){
-        clearErr(u.key);
+      const keysToLoad = ["jcpl","pseg","ace"];
 
-        if (u.instanceId.includes("INSTANCE_ID") || u.viewId.includes("VIEW_ID")){
-          document.getElementById(`out-${u.key}`).textContent = "—";
-          document.getElementById(`dt-${u.key}`).textContent = "Set IDs in code";
-          setStatus(u.key, "Setup needed", "warn");
-          totalErrors++;
-          continue;
-        }
+      for (const key of keysToLoad){
+        clearErr(key);
+        setStatus(key, "Updating…", "warn");
 
         try{
-          setStatus(u.key, "Updating…", "warn");
-          const json = await fetchCurrentState(u.instanceId, u.viewId);
+          const data = await getUtilityOutages(key);
+          document.getElementById(`out-${key}`).textContent = fmt(data.customersOut);
+          document.getElementById(`dt-${key}`).textContent =
+            data.updatedAtLocal ? `Feed updated: ${data.updatedAtLocal}` : "Feed updated: —";
+          setStatus(key, "OK", "ok");
 
-          const { customersOut, updatedRaw } = extractSummary(json);
-          const updated = toLocalTimeString(updatedRaw);
-
-          if (!u.njOnly){
-            throw new Error("This feed isn’t configured as NJ-only yet (njOnly=false).");
-          }
-
-          if (typeof customersOut !== "number"){
-            throw new Error("Could not find outage total in response (schema change). See console.");
-          }
-
-          document.getElementById(`out-${u.key}`).textContent = fmt(customersOut);
-          document.getElementById(`dt-${u.key}`).textContent = updated ? `Last updated: ${updated}` : "Last updated: (not provided)";
-          setStatus(u.key, "OK", "ok");
-
-          total += customersOut;
+          total += data.customersOut;
           included++;
         }catch(err){
-          console.error("Fetch error:", u.key, err);
-          showErr(u.key, `Couldn’t load data (${u.label}). ${err.message || err}`);
-          document.getElementById(`out-${u.key}`).textContent = "—";
-          document.getElementById(`dt-${u.key}`).textContent = "—";
-          totalErrors++;
-        }
-      }
+          console.error(key, err);
+          const msg = (err && err.message) ? err.message : String(err);
 
-      const totalOutEl = document.getElementById("totalOut");
-      const totalDetailEl = document.getElementById("totalDetail");
-      const totalStatusDot = document.querySelector("#totalStatus .dot");
-      const totalStatusText = document.getElementById("totalStatusText");
-      const totalErrEl = document.getElementById("totalErr");
-
-      if (included > 0){
-        totalOutEl.textContent = fmt(total);
-        totalDetailEl.textContent = `Included ${included} utility feed(s). ${totalErrors ? `${totalErrors} had errors/setup needed.` : ""}`.trim();
-
-        totalStatusDot.classList.remove("ok","warn","bad");
-        totalStatusDot.classList.add(totalErrors ? "warn" : "ok");
-        totalStatusText.textContent = totalErrors ? "Partial" : "OK";
-
-        totalErrEl.style.display = "none";
-        totalErrEl.textContent = "";
-      }else{
-        totalOutEl.textContent = "—";
-        totalDetailEl.textContent = "No feeds loaded yet.";
-        totalStatusDot.classList.remove("ok","warn","bad");
-        totalStatusDot.classList.add("bad");
-        totalStatusText.textContent = "Not available";
-
-        totalErrEl.style.display = "block";
-        totalErrEl.textContent = "Set the KUBRA INSTANCE_ID/VIEW_ID values in UTILITIES (and ensure the endpoints allow browser access).";
-      }
-
-      lastUpdatedEl.textContent = new Date().toLocaleString();
-    }
-
-    document.getElementById("refreshBtn").addEventListener("click", refresh);
-    refresh();
-    setInterval(refresh, REFRESH_MS);
-  </script>
-</body>
-</html>
+          // Detect common browser CORS fa
