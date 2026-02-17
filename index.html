@@ -5,57 +5,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NJ Power Outages</title>
   <style>
-    :root{
-      --muted:#9fb0d0; --text:#e8efff; --line:rgba(255,255,255,.10);
-      --good:#34d399; --warn:#fbbf24; --bad:#fb7185;
-    }
+    :root{--muted:#9fb0d0;--text:#e8efff;--line:rgba(255,255,255,.10);--good:#34d399;--warn:#fbbf24;--bad:#fb7185;}
     *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-      background:linear-gradient(180deg,#070b14 0%, #0b1220 60%, #070b14 100%);
-      color:var(--text);
-      padding:18px;
-    }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:linear-gradient(180deg,#070b14 0%, #0b1220 60%, #070b14 100%);color:var(--text);padding:18px;}
     .wrap{max-width:980px;margin:0 auto}
     .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
-    h1{margin:0;font-size:22px;font-weight:750;letter-spacing:.2px}
+    h1{margin:0;font-size:22px;font-weight:750}
     .sub{margin-top:6px;color:var(--muted);font-size:13px}
     .pillrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .pill{border:1px solid var(--line);background:rgba(255,255,255,.04);padding:6px 10px;border-radius:999px;font-size:12px;color:var(--muted)}
     .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
-    .card{
-      grid-column:span 12;
-      background:rgba(16,26,47,.86);
-      border:1px solid var(--line);
-      border-radius:16px;
-      padding:14px 14px 12px;
-      box-shadow:0 10px 28px rgba(0,0,0,.25);
-    }
-    @media(min-width:820px){
-      .card{grid-column:span 6}
-      .card.total{grid-column:span 12}
-    }
+    .card{grid-column:span 12;background:rgba(16,26,47,.86);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;box-shadow:0 10px 28px rgba(0,0,0,.25);}
+    @media(min-width:820px){.card{grid-column:span 6}.card.total{grid-column:span 12}.card.diag{grid-column:span 12}}
     .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .name{font-weight:700}
     .meta{color:var(--muted);font-size:12px;margin-top:2px}
-    .big{font-size:34px;font-weight:850;letter-spacing:.2px;margin:10px 0 2px}
+    .big{font-size:34px;font-weight:850;margin:10px 0 2px}
     .small{font-size:12px;color:var(--muted)}
     .status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
     .dot{width:9px;height:9px;border-radius:50%}
-    .dot.ok{background:var(--good)}
-    .dot.warn{background:var(--warn)}
-    .dot.bad{background:var(--bad)}
-    button{
-      appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.04);
-      color:var(--text);padding:8px 10px;border-radius:10px;font-weight:650;cursor:pointer;font-size:12px
-    }
+    .dot.ok{background:var(--good)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+    button{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);padding:8px 10px;border-radius:10px;font-weight:650;cursor:pointer;font-size:12px}
     button:hover{background:rgba(255,255,255,.07)}
-    a{color:#b7ccff;text-decoration:none}
-    a:hover{text-decoration:underline}
+    a{color:#b7ccff;text-decoration:none} a:hover{text-decoration:underline}
     .err{color:var(--bad);font-size:12px;margin-top:8px;display:none;white-space:pre-wrap}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-    .foot{margin-top:12px;color:var(--muted);font-size:12px}
+    .diagbox{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:10px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px}
+    .diagline{padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.08)}
+    .diagline:last-child{border-bottom:none}
   </style>
 </head>
 <body>
@@ -63,7 +40,7 @@
     <div class="header">
       <div>
         <h1>New Jersey Power Outages</h1>
-        <div class="sub">Totals scraped from public outage-map pages via your Cloudflare Worker proxy (auto-refresh).</div>
+        <div class="sub">Scraped from public outage-map pages via your Cloudflare Worker (with timeouts + diagnostics).</div>
         <div class="pillrow">
           <div class="pill">Refresh: <span class="mono" id="refreshEvery">180s</span></div>
           <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
@@ -78,16 +55,15 @@
         <div class="row">
           <div>
             <div class="name">Statewide total (sum of loaded feeds)</div>
-            <div class="meta">If a utility page format changes or errors, it won’t be included.</div>
+            <div class="meta">Utilities that fail won’t be included.</div>
           </div>
-          <div class="status" id="totalStatus"><span class="dot warn"></span><span id="totalStatusText">Loading…</span></div>
+          <div class="status" id="totalStatus"><span class="dot warn"></span><span id="totalStatusText">Idle</span></div>
         </div>
         <div class="big" id="totalOut">—</div>
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
       </div>
 
-      <!-- JCP&L / FirstEnergy NJ -->
       <div class="card" id="card-jcpl">
         <div class="row">
           <div>
@@ -98,14 +74,13 @@
             </div>
             <div class="small mono" id="dbgtext-jcpl"></div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-jcpl"></span><span id="st-jcpl">Loading…</span></div>
+          <div class="status"><span class="dot warn" id="dot-jcpl"></span><span id="st-jcpl">Idle</span></div>
         </div>
         <div class="big" id="out-jcpl">—</div>
         <div class="small" id="dt-jcpl">—</div>
         <div class="err" id="err-jcpl"></div>
       </div>
 
-      <!-- PSE&G -->
       <div class="card" id="card-pseg">
         <div class="row">
           <div>
@@ -116,14 +91,13 @@
             </div>
             <div class="small mono" id="dbgtext-pseg"></div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-pseg"></span><span id="st-pseg">Loading…</span></div>
+          <div class="status"><span class="dot warn" id="dot-pseg"></span><span id="st-pseg">Idle</span></div>
         </div>
         <div class="big" id="out-pseg">—</div>
         <div class="small" id="dt-pseg">—</div>
         <div class="err" id="err-pseg"></div>
       </div>
 
-      <!-- Atlantic City Electric -->
       <div class="card" id="card-ace">
         <div class="row">
           <div>
@@ -134,14 +108,13 @@
             </div>
             <div class="small mono" id="dbgtext-ace"></div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-ace"></span><span id="st-ace">Loading…</span></div>
+          <div class="status"><span class="dot warn" id="dot-ace"></span><span id="st-ace">Idle</span></div>
         </div>
         <div class="big" id="out-ace">—</div>
         <div class="small" id="dt-ace">—</div>
         <div class="err" id="err-ace"></div>
       </div>
 
-      <!-- Orange & Rockland -->
       <div class="card" id="card-oru">
         <div class="row">
           <div>
@@ -152,17 +125,18 @@
             </div>
             <div class="small mono" id="dbgtext-oru"></div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Loading…</span></div>
+          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Idle</span></div>
         </div>
         <div class="big" id="out-oru">—</div>
         <div class="small" id="dt-oru">—</div>
         <div class="err" id="err-oru"></div>
       </div>
-    </div>
 
-    <div class="foot">
-      Embed:
-      <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="560" style="border:0"&gt;&lt;/iframe&gt;</span>
+      <div class="card diag">
+        <div class="name">Diagnostics</div>
+        <div class="meta">Shows what the Worker returned (status + snippet). If this stays blank, your JS isn’t running.</div>
+        <div class="diagbox mono" id="diag"></div>
+      </div>
     </div>
   </div>
 
@@ -170,44 +144,24 @@
     const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
 
     const UTILITIES = [
-      {
-        key: "jcpl",
-        // FirstEnergy NJ Storm Center shows "Customers Out" on the page. :contentReference[oaicite:4]{index=4}
-        pageUrl: "https://outages-nj.firstenergycorp.com/",
-        parse: (html) => extractNumberAfterLabel(html, [
-          "Customers Out", "Customers\\s*Out"
-        ])
-      },
-      {
-        key: "pseg",
-        // PSE&G page contains "Affected Customers:" and "Active Outages:" in HTML. :contentReference[oaicite:5]{index=5}
-        pageUrl: "https://outagecenter.pseg.com/",
-        parse: (html) => extractNumberAfterLabel(html, [
-          "Affected Customers", "Affected\\s*Customers"
-        ])
-      },
-      {
-        key: "ace",
-        // ACE outage map shows "Total Customers Affected" in HTML. :contentReference[oaicite:6]{index=6}
-        pageUrl: "https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx",
-        parse: (html) => extractNumberAfterLabel(html, [
-          "Total Customers Affected", "Total\\s*Customers\\s*Affected"
-        ])
-      },
-      {
-        key: "oru",
-        // ORU outage map shows "Customers Out of Service". :contentReference[oaicite:7]{index=7}
-        pageUrl: "https://outagemap.oru.com/",
-        parse: (html) => extractNumberAfterLabel(html, [
-          "Customers Out of Service", "Customers\\s*Out\\s*of\\s*Service"
-        ])
-      }
+      { key:"jcpl", url:"https://outages-nj.firstenergycorp.com/", labelRegexes:["Customers\\s*Out","Affected\\s*Customers"] },
+      { key:"pseg", url:"https://outagecenter.pseg.com/", labelRegexes:["Affected\\s*Customers","Customers\\s*Out"] },
+      { key:"ace",  url:"https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx", labelRegexes:["Total\\s*Customers\\s*Affected","Customers\\s*Affected"] },
+      { key:"oru",  url:"https://outagemap.oru.com/", labelRegexes:["Customers\\s*Out\\s*of\\s*Service","Customers\\s*Out"] },
     ];
 
-    const REFRESH_MS = 180000;      // 3 minutes
-    const TIMEOUT_MS = 12000;       // 12 seconds
+    const REFRESH_MS = 180000;
+    const TIMEOUT_MS = 12000;
 
     document.getElementById("refreshEvery").textContent = (REFRESH_MS/1000) + "s";
+
+    const diagEl = document.getElementById("diag");
+    function diagLine(key, txt){
+      const div = document.createElement("div");
+      div.className = "diagline";
+      div.textContent = `[${key}] ${txt}`;
+      diagEl.prepend(div);
+    }
 
     function proxied(url){ return PROXY_PREFIX + encodeURIComponent(url); }
 
@@ -244,31 +198,25 @@
       return new Intl.NumberFormat("en-US").format(n);
     }
 
-    async function fetchTextWithTimeout(targetUrl, timeoutMs){
+    async function fetchTextViaWorker(url, timeoutMs){
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try{
-        const res = await fetch(proxied(targetUrl), { cache: "no-store", signal: controller.signal });
-        const bodyText = await res.text();
-        if (!res.ok){
-          throw new Error(`HTTP ${res.status}\nBody (first 300): ${bodyText.slice(0,300)}`);
-        }
-        return bodyText;
+        const res = await fetch(proxied(url), { cache:"no-store", signal: controller.signal });
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, text };
       } catch (err){
-        if (err && err.name === "AbortError") throw new Error(`Timed out after ${timeoutMs/1000}s`);
-        throw err;
+        if (err && err.name === "AbortError") return { ok:false, status: 0, text: `Timed out after ${timeoutMs/1000}s` };
+        return { ok:false, status: 0, text: String(err) };
       } finally {
         clearTimeout(timer);
       }
     }
 
-    // Extract a number that appears after one of the label patterns.
-    // Handles commas, HTML tags, extra whitespace.
-    function extractNumberAfterLabel(html, labelPatterns){
-      const cleaned = html.replace(/\s+/g, " "); // reduce whitespace
-      for (const lp of labelPatterns){
-        // Look for: label ... optional punctuation ... number
-        const re = new RegExp(lp + "[^0-9]{0,80}([0-9][0-9,]*)", "i");
+    function extractNumber(html, labelRegexes){
+      const cleaned = html.replace(/\s+/g, " ");
+      for (const label of labelRegexes){
+        const re = new RegExp(label + "[^0-9]{0,120}([0-9][0-9,]*)", "i");
         const m = cleaned.match(re);
         if (m && m[1]) {
           const n = parseInt(m[1].replace(/,/g,""), 10);
@@ -278,14 +226,75 @@
       return null;
     }
 
-    async function loadUtility(u){
+    async function loadOne(u){
       clearErr(u.key);
       setStatus(u.key, "Updating…", "warn");
-      setDebug(u.key, u.pageUrl);
+      setDebug(u.key, u.url);
 
-      const html = await fetchTextWithTimeout(u.pageUrl, TIMEOUT_MS);
-      const out = u.parse(html);
+      const r = await fetchTextViaWorker(u.url, TIMEOUT_MS);
+      const snippet = (r.text || "").slice(0, 160).replace(/\s+/g," ");
+      diagLine(u.key, `HTTP ${r.status} | ${snippet}`);
 
-      if (!Number.isFinite(out)) {
-        // show a hint: this means the page HTML format changed
-        throw new Err
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}\nBody (first 300): ${(r.text||"").slice(0,300)}`);
+      }
+
+      const n = extractNumber(r.text, u.labelRegexes);
+      if (!Number.isFinite(n)) {
+        throw new Error("Could not find outage total in HTML (labels not matched). Open Debug link and search for the label text.");
+      }
+
+      document.getElementById(`out-${u.key}`).textContent = fmt(n);
+      document.getElementById(`dt-${u.key}`).textContent = "Source: public outage map page (via Worker)";
+      setStatus(u.key, "OK", "ok");
+      return n;
+    }
+
+    async function refresh(){
+      document.getElementById("lastUpdated").textContent = "Updating…";
+
+      // mark total as updating
+      const totalDot = document.querySelector("#totalStatus .dot");
+      const totalText = document.getElementById("totalStatusText");
+      totalDot.classList.remove("ok","warn","bad");
+      totalDot.classList.add("warn");
+      totalText.textContent = "Updating…";
+
+      let total = 0, included = 0, failed = 0;
+
+      // Run sequentially so you can see which one hangs/fails first
+      for (const u of UTILITIES){
+        try{
+          const n = await loadOne(u);
+          total += n;
+          included++;
+        } catch (err){
+          failed++;
+          document.getElementById(`out-${u.key}`).textContent = "—";
+          document.getElementById(`dt-${u.key}`).textContent = "—";
+          showErr(u.key, (err && err.message) ? err.message : String(err));
+        }
+      }
+
+      // total card update
+      document.getElementById("totalOut").textContent = included ? fmt(total) : "—";
+      document.getElementById("totalDetail").textContent = `Included ${included}. Failed ${failed}.`;
+
+      totalDot.classList.remove("ok","warn","bad");
+      if (included && !failed){ totalDot.classList.add("ok"); totalText.textContent = "OK"; }
+      else if (included && failed){ totalDot.classList.add("warn"); totalText.textContent = "Partial"; }
+      else { totalDot.classList.add("bad"); totalText.textContent = "Not available"; }
+
+      document.getElementById("lastUpdated").textContent = new Date().toLocaleString();
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+
+    // If this line never appears in Diagnostics, your JS isn't running.
+    diagLine("BOOT", "Script loaded OK");
+
+    refresh();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>
