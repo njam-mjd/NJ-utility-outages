@@ -62,11 +62,11 @@
     <div class="header">
       <div class="title">
         <h1>New Jersey Power Outages</h1>
-        <div class="sub">Live totals from the utilities’ outage-map data feeds (auto-refresh).</div>
+        <div class="sub">Live totals from utilities’ outage-map feeds (auto-refresh).</div>
         <div class="pillrow">
           <div class="pill">Refresh: <span class="mono" id="refreshEvery">120s</span></div>
           <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
-          <div class="pill">Source: KUBRA Storm Center <span class="mono">currentState → interval_generation_data</span></div>
+          <div class="pill">Proxy: <span class="mono">nj-outages-proxy.timesoftrenton.workers.dev</span></div>
         </div>
       </div>
       <div class="btns">
@@ -78,8 +78,8 @@
       <div class="card total" id="totalCard">
         <div class="row">
           <div>
-            <div class="name">Statewide total (NJ-only)</div>
-            <div class="meta">Sum of the utility totals that successfully load.</div>
+            <div class="name">Statewide total (sum of loaded feeds)</div>
+            <div class="meta">If a feed errors, it won’t be included.</div>
           </div>
           <div class="status" id="totalStatus">
             <span class="dot warn"></span><span id="totalStatusText">Loading…</span>
@@ -89,8 +89,7 @@
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
         <div class="note">
-          Powered by your Cloudflare Worker proxy:
-          <span class="mono">nj-outages-proxy.timesoftrenton.workers.dev</span>
+          If you see timeouts, click a utility’s “Debug link” to see what the Worker is returning.
         </div>
       </div>
 
@@ -98,258 +97,9 @@
         <div class="row">
           <div>
             <div class="name">JCP&amp;L (FirstEnergy)</div>
-            <div class="meta"><a href="https://www.firstenergycorp.com/jersey_central_power_light.html" target="_blank" rel="noreferrer">Utility site</a></div>
+            <div class="meta">
+              <a href="https://www.firstenergycorp.com/jersey_central_power_light.html" target="_blank" rel="noreferrer">Utility site</a>
+              · <a href="#" id="dbg-jcpl" target="_blank" rel="noreferrer">Debug link</a>
+            </div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-jcpl"></span><span id="st-jcpl">Loading…</span></div>
-        </div>
-        <div class="big" id="out-jcpl">—</div>
-        <div class="small" id="dt-jcpl">—</div>
-        <div class="err" id="err-jcpl"></div>
-      </div>
-
-      <div class="card" id="card-pseg">
-        <div class="row">
-          <div>
-            <div class="name">PSE&amp;G</div>
-            <div class="meta"><a href="https://nj.pseg.com/" target="_blank" rel="noreferrer">Utility site</a></div>
-          </div>
-          <div class="status"><span class="dot warn" id="dot-pseg"></span><span id="st-pseg">Loading…</span></div>
-        </div>
-        <div class="big" id="out-pseg">—</div>
-        <div class="small" id="dt-pseg">—</div>
-        <div class="err" id="err-pseg"></div>
-      </div>
-
-      <div class="card" id="card-ace">
-        <div class="row">
-          <div>
-            <div class="name">Atlantic City Electric</div>
-            <div class="meta"><a href="https://www.atlanticcityelectric.com/" target="_blank" rel="noreferrer">Utility site</a></div>
-          </div>
-          <div class="status"><span class="dot warn" id="dot-ace"></span><span id="st-ace">Loading…</span></div>
-        </div>
-        <div class="big" id="out-ace">—</div>
-        <div class="small" id="dt-ace">—</div>
-        <div class="err" id="err-ace"></div>
-      </div>
-
-      <div class="card" id="card-oru">
-        <div class="row">
-          <div>
-            <div class="name">Orange &amp; Rockland (ORU)</div>
-            <div class="meta"><a href="https://www.oru.com/en" target="_blank" rel="noreferrer">Utility site</a></div>
-          </div>
-          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Setup needed</span></div>
-        </div>
-        <div class="big" id="out-oru">—</div>
-        <div class="small" id="dt-oru">—</div>
-        <div class="err" id="err-oru"></div>
-      </div>
-    </div>
-
-    <div class="foot">
-      Embed:
-      <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="520" style="border:0"&gt;&lt;/iframe&gt;</span>
-    </div>
-  </div>
-
-  <script>
-    /**
-     * Cloudflare Worker proxy prefix (your deployed worker)
-     * Calls become:
-     *   https://nj-outages-proxy.timesoftrenton.workers.dev/?url=<ENCODED_TARGET_URL>
-     */
-    const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
-
-    /**
-     * Your 3 provided currentState endpoints
-     */
-    const ENDPOINTS = {
-      jcpl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
-      pseg: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
-      ace:  "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false"
-      // Add ORU currentState URL here when you have it
-    };
-
-    const REFRESH_MS = 120000;
-    document.getElementById("refreshEvery").textContent = (REFRESH_MS/1000) + "s";
-
-    function setDot(key, state){
-      const dot = document.getElementById(`dot-${key}`);
-      dot.classList.remove("ok","warn","bad");
-      dot.classList.add(state);
-    }
-    function setStatus(key, text, state){
-      document.getElementById(`st-${key}`).textContent = text;
-      setDot(key, state);
-    }
-    function showErr(key, msg){
-      const el = document.getElementById(`err-${key}`);
-      el.style.display = "block";
-      el.textContent = msg;
-      setStatus(key, "Error", "bad");
-    }
-    function clearErr(key){
-      const el = document.getElementById(`err-${key}`);
-      el.style.display = "none";
-      el.textContent = "";
-    }
-    function fmt(n){
-      if (n === null || n === undefined || Number.isNaN(n)) return "—";
-      return new Intl.NumberFormat("en-US").format(n);
-    }
-    function toLocalTimeString(updatedRaw){
-      if (!updatedRaw) return null;
-      if (typeof updatedRaw === "number"){
-        const ms = updatedRaw < 2e10 ? updatedRaw * 1000 : updatedRaw;
-        return new Date(ms).toLocaleString();
-      }
-      const d = new Date(updatedRaw);
-      if (!Number.isNaN(d.getTime())) return d.toLocaleString();
-      return String(updatedRaw);
-    }
-    function proxied(url){
-      return PROXY_PREFIX + encodeURIComponent(url);
-    }
-    async function fetchJson(url){
-      const res = await fetch(proxied(url), { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    }
-
-    // Build second URL: base ".../views/<viewId>" + "/data/<uuid>"
-    function buildSecondUrl(currentStateUrl, relativePath){
-      const base = currentStateUrl.split("/currentState?")[0]; // .../views/<viewId>
-      return `${base}/${relativePath}`;
-    }
-
-    // Extract outage count from interval_generation_data (schema varies)
-    function extractCustomersOut(intervalJson){
-      const preferredKeys = new Set([
-        "customersOut","customers_out","customersWithoutService",
-        "affectedCustomers","affected_customers","customersAffected","customers_affected",
-        "totalCustomersAffected","total_customers_affected",
-        "cust_out","custOut","cust_without_service","customers_without_service"
-      ]);
-
-      let best = null;
-
-      function consider(v){
-        if (typeof v !== "number") return;
-        if (!Number.isFinite(v)) return;
-        if (v < 0 || v > 20000000) return; // guardrail
-        if (best === null || v > best) best = v;
-      }
-
-      function walk(node){
-        if (!node || typeof node !== "object") return;
-        for (const [k,v] of Object.entries(node)){
-          if (typeof v === "number"){
-            if (preferredKeys.has(k)) consider(v);
-            else consider(v);
-          } else if (v && typeof v === "object"){
-            walk(v);
-          }
-        }
-      }
-
-      walk(intervalJson);
-      return best;
-    }
-
-    async function getUtilityOutages(key){
-      const currentStateUrl = ENDPOINTS[key];
-      if (!currentStateUrl) throw new Error("No endpoint configured.");
-
-      // 1) currentState
-      const currentState = await fetchJson(currentStateUrl);
-
-      // 2) interval_generation_data pointer
-      const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
-      const intervalPath = currentState?.data?.interval_generation_data;
-
-      if (!intervalPath) {
-        throw new Error("currentState missing data.interval_generation_data (schema changed).");
-      }
-
-      // 3) interval_generation_data file
-      const intervalUrl = buildSecondUrl(currentStateUrl, intervalPath);
-      const intervalJson = await fetchJson(intervalUrl);
-
-      const customersOut = extractCustomersOut(intervalJson);
-      if (typeof customersOut !== "number") {
-        const keys = Object.keys(intervalJson || {}).slice(0, 40).join(", ");
-        throw new Error("Could not locate outage total in interval file. Top-level keys: " + keys);
-      }
-
-      return { customersOut, updatedAtLocal: toLocalTimeString(updatedAt) };
-    }
-
-    async function refresh(){
-      document.getElementById("lastUpdated").textContent = "Loading…";
-
-      let total = 0;
-      let included = 0;
-      let errors = 0;
-
-      const keysToLoad = ["jcpl","pseg","ace"];
-
-      for (const key of keysToLoad){
-        clearErr(key);
-        setStatus(key, "Updating…", "warn");
-
-        try{
-          const data = await getUtilityOutages(key);
-          document.getElementById(`out-${key}`).textContent = fmt(data.customersOut);
-          document.getElementById(`dt-${key}`).textContent =
-            data.updatedAtLocal ? `Feed updated: ${data.updatedAtLocal}` : "Feed updated: —";
-          setStatus(key, "OK", "ok");
-
-          total += data.customersOut;
-          included++;
-        }catch(err){
-          console.error(key, err);
-          const msg = (err && err.message) ? err.message : String(err);
-          showErr(key, msg);
-          document.getElementById(`out-${key}`).textContent = "—";
-          document.getElementById(`dt-${key}`).textContent = "—";
-          errors++;
-        }
-      }
-
-      // total card
-      const totalOutEl = document.getElementById("totalOut");
-      const totalDetailEl = document.getElementById("totalDetail");
-      const totalStatusDot = document.querySelector("#totalStatus .dot");
-      const totalStatusText = document.getElementById("totalStatusText");
-      const totalErrEl = document.getElementById("totalErr");
-
-      if (included > 0){
-        totalOutEl.textContent = fmt(total);
-        totalDetailEl.textContent = `Included ${included} feed(s). ${errors ? `${errors} failed.` : ""}`.trim();
-        totalStatusDot.classList.remove("ok","warn","bad");
-        totalStatusDot.classList.add(errors ? "warn" : "ok");
-        totalStatusText.textContent = errors ? "Partial" : "OK";
-        totalErrEl.style.display = "none";
-        totalErrEl.textContent = "";
-      } else {
-        totalOutEl.textContent = "—";
-        totalDetailEl.textContent = "No feeds loaded.";
-        totalStatusDot.classList.remove("ok","warn","bad");
-        totalStatusDot.classList.add("bad");
-        totalStatusText.textContent = "Not available";
-        totalErrEl.style.display = "block";
-        totalErrEl.textContent =
-          "All feeds failed. Open DevTools → Console to see the exact error. " +
-          "If your Worker is restricting hosts, make sure it allows kubra.io.";
-      }
-
-      document.getElementById("lastUpdated").textContent = new Date().toLocaleString();
-    }
-
-    document.getElementById("refreshBtn").addEventListener("click", refresh);
-    refresh();
-    setInterval(refresh, REFRESH_MS);
-  </script>
-</body>
-</html>
+          <div class="status"><span class="dot war
