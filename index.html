@@ -88,9 +88,7 @@
         <div class="big" id="totalOut">—</div>
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
-        <div class="note">
-          Debug links below show the exact URL being fetched (via your Worker).
-        </div>
+        <div class="note">Debug URLs are printed on each card.</div>
       </div>
 
       <div class="card" id="card-jcpl">
@@ -180,17 +178,6 @@
 
     function proxied(url){ return PROXY_PREFIX + encodeURIComponent(url); }
 
-    function setInitialDebugLinks(){
-      for (const k of ["jcpl","pseg","ace"]) {
-        const u = proxied(ENDPOINTS[k]);
-        const a = document.getElementById(`dbg-${k}`);
-        if (a) a.href = u;
-        const t = document.getElementById(`dbgtext-${k}`);
-        if (t) t.textContent = u;
-      }
-    }
-    setInitialDebugLinks();
-
     function setDot(key, state){
       const dot = document.getElementById(`dot-${key}`);
       dot.classList.remove("ok","warn","bad");
@@ -226,24 +213,18 @@
       return String(updatedRaw);
     }
 
-    // IMPORTANT: always parse as JSON regardless of content-type
+    // Parse regardless of content-type (data files can be served oddly)
     async function fetchJsonWithTimeout(targetUrl, timeoutMs){
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-
       try{
         const res = await fetch(proxied(targetUrl), { cache: "no-store", signal: controller.signal });
         const bodyText = await res.text();
-
         if (!res.ok){
           throw new Error(`HTTP ${res.status}\nBody (first 300): ${bodyText.slice(0,300)}`);
         }
-
-        try {
-          return JSON.parse(bodyText);
-        } catch {
-          throw new Error(`Not JSON (parse failed)\nBody (first 300): ${bodyText.slice(0,300)}`);
-        }
+        try { return JSON.parse(bodyText); }
+        catch { throw new Error(`Not JSON (parse failed)\nBody (first 300): ${bodyText.slice(0,300)}`); }
       } catch (err){
         if (err && err.name === "AbortError") throw new Error(`Timed out after ${timeoutMs/1000}s`);
         throw err;
@@ -252,13 +233,15 @@
       }
     }
 
-    // Build data URL: ".../views/<viewId>" + "/data/<uuid>"
-    function buildDataUrl(currentStateUrl, intervalPath){
-      const base = currentStateUrl.split("/currentState?")[0];
-      return `${base}/${intervalPath}`;
+    // ✅ FIX: interval_generation_data is relative to /stormcenters/<id>/ (NOT /views/<viewId>/)
+    function buildDataUrlFromCurrentStateUrl(currentStateUrl, intervalPath){
+      // Extract: https://kubra.io/stormcenter/api/v1/stormcenters/<ID>
+      const m = currentStateUrl.match(/^(https:\/\/kubra\.io\/stormcenter\/api\/v1\/stormcenters\/[^\/]+)\//);
+      if (!m) throw new Error("Could not parse stormcenter base URL from currentState URL.");
+      const stormcenterBase = m[1];
+      return `${stormcenterBase}/${intervalPath}`;
     }
 
-    // Extract outage total from interval_generation_data (schema varies)
     function extractCustomersOut(intervalJson){
       const preferredKeys = new Set([
         "customersOut","customers_out","customersWithoutService",
@@ -284,9 +267,9 @@
       (function walk(node){
         if (!node || typeof node !== "object") return;
         for (const [k,v] of Object.entries(node)){
-          if (typeof v === "number"){
+          if (typeof v === "number") {
             consider(v, preferredKeys.has(k));
-          } else if (v && typeof v === "object"){
+          } else if (v && typeof v === "object") {
             walk(v);
           }
         }
@@ -295,26 +278,32 @@
       return bestPreferred ?? bestAny;
     }
 
+    function setDebug(key, url){
+      const dbgUrl = proxied(url);
+      const a = document.getElementById(`dbg-${key}`);
+      if (a) a.href = dbgUrl;
+      const t = document.getElementById(`dbgtext-${key}`);
+      if (t) t.textContent = dbgUrl;
+    }
+
+    // Seed debug links with currentState URLs
+    for (const k of ["jcpl","pseg","ace"]) setDebug(k, ENDPOINTS[k]);
+
     async function getUtilityOutages(key){
       const currentStateUrl = ENDPOINTS[key];
 
       // 1) currentState
       const currentState = await fetchJsonWithTimeout(currentStateUrl, FETCH_TIMEOUT_MS);
 
-      // 2) interval_generation_data pointer + updatedAt
       const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
       const intervalPath = currentState?.data?.interval_generation_data;
       if (!intervalPath) throw new Error("currentState missing data.interval_generation_data");
 
-      // 3) data file
-      const dataUrl = buildDataUrl(currentStateUrl, intervalPath);
+      // 2) data/<uuid> at stormcenter root (fix)
+      const dataUrl = buildDataUrlFromCurrentStateUrl(currentStateUrl, intervalPath);
 
-      // Update debug link/text to point at the actual data file (more useful than currentState)
-      const dbgUrl = proxied(dataUrl);
-      const a = document.getElementById(`dbg-${key}`);
-      if (a) a.href = dbgUrl;
-      const t = document.getElementById(`dbgtext-${key}`);
-      if (t) t.textContent = dbgUrl;
+      // Update debug to the actual data URL (most useful)
+      setDebug(key, dataUrl);
 
       const intervalJson = await fetchJsonWithTimeout(dataUrl, FETCH_TIMEOUT_MS);
 
@@ -351,7 +340,7 @@
           included++;
         }catch(err){
           const msg = (err && err.message) ? err.message : String(err);
-          showErr(key, msg + "\n\nUse the debug URL shown above to inspect what the Worker returns.");
+          showErr(key, msg);
           document.getElementById(`out-${key}`).textContent = "—";
           document.getElementById(`dt-${key}`).textContent = "—";
           errors++;
