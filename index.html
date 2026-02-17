@@ -6,26 +6,30 @@
   <title>NJ Power Outages</title>
   <style>
     :root{
-      --bg:#0b1220; --card:#101a2f; --muted:#9fb0d0; --text:#e8efff;
-      --line:rgba(255,255,255,.10); --good:#34d399; --warn:#fbbf24; --bad:#fb7185;
+      --muted:#9fb0d0; --text:#e8efff; --line:rgba(255,255,255,.10);
+      --good:#34d399; --warn:#fbbf24; --bad:#fb7185;
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+    body{
+      margin:0;
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
       background:linear-gradient(180deg,#070b14 0%, #0b1220 60%, #070b14 100%);
-      color:var(--text); padding:18px;
+      color:var(--text);
+      padding:18px;
     }
     .wrap{max-width:920px;margin:0 auto}
     .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
-    .title{line-height:1.15}
     h1{margin:0;font-size:22px;font-weight:750;letter-spacing:.2px}
     .sub{margin-top:6px;color:var(--muted);font-size:13px}
     .pillrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .pill{border:1px solid var(--line);background:rgba(255,255,255,.04);
-      padding:6px 10px;border-radius:999px;font-size:12px;color:var(--muted)
-    }
+    .pill{border:1px solid var(--line);background:rgba(255,255,255,.04);padding:6px 10px;border-radius:999px;font-size:12px;color:var(--muted)}
     .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
-    .card{grid-column:span 12;background:rgba(16,26,47,.86);
-      border:1px solid var(--line); border-radius:16px; padding:14px 14px 12px;
+    .card{
+      grid-column:span 12;
+      background:rgba(16,26,47,.86);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:14px 14px 12px;
       box-shadow:0 10px 28px rgba(0,0,0,.25);
     }
     @media(min-width:720px){
@@ -42,53 +46,45 @@
     .dot.ok{background:var(--good)}
     .dot.warn{background:var(--warn)}
     .dot.bad{background:var(--bad)}
-    .btns{display:flex;gap:8px}
     button{
       appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.04);
-      color:var(--text);padding:8px 10px;border-radius:10px;font-weight:650;
-      cursor:pointer;font-size:12px
+      color:var(--text);padding:8px 10px;border-radius:10px;font-weight:650;cursor:pointer;font-size:12px
     }
     button:hover{background:rgba(255,255,255,.07)}
     a{color:#b7ccff;text-decoration:none}
     a:hover{text-decoration:underline}
-    .foot{margin-top:12px;color:var(--muted);font-size:12px}
     .err{color:var(--bad);font-size:12px;margin-top:8px;display:none;white-space:pre-wrap}
-    .note{color:var(--muted);font-size:12px;margin-top:8px}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .foot{margin-top:12px;color:var(--muted);font-size:12px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="header">
-      <div class="title">
+      <div>
         <h1>New Jersey Power Outages</h1>
-        <div class="sub">Live totals from utilities’ outage-map feeds (auto-refresh).</div>
+        <div class="sub">KUBRA Storm Center totals via public summary JSON (auto-refresh).</div>
         <div class="pillrow">
           <div class="pill">Refresh: <span class="mono" id="refreshEvery">120s</span></div>
           <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
           <div class="pill">Proxy: <span class="mono">nj-outages-proxy.timesoftrenton.workers.dev</span></div>
         </div>
       </div>
-      <div class="btns">
-        <button id="refreshBtn" title="Refresh now">Refresh</button>
-      </div>
+      <div><button id="refreshBtn">Refresh</button></div>
     </div>
 
     <div class="grid">
-      <div class="card total" id="totalCard">
+      <div class="card total">
         <div class="row">
           <div>
             <div class="name">Statewide total (sum of loaded feeds)</div>
             <div class="meta">If a feed errors, it won’t be included.</div>
           </div>
-          <div class="status" id="totalStatus">
-            <span class="dot warn"></span><span id="totalStatusText">Loading…</span>
-          </div>
+          <div class="status" id="totalStatus"><span class="dot warn"></span><span id="totalStatusText">Loading…</span></div>
         </div>
         <div class="big" id="totalOut">—</div>
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
-        <div class="note">Debug URLs are printed on each card.</div>
       </div>
 
       <div class="card" id="card-jcpl">
@@ -165,11 +161,24 @@
   <script>
     const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
 
-    const ENDPOINTS = {
-      jcpl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
-      pseg: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
-      ace:  "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false"
-    };
+    // Your 3 provided currentState URLs
+    const UTIL = [
+      {
+        key: "jcpl",
+        label: "JCP&L (FirstEnergy)",
+        currentStateUrl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
+      },
+      {
+        key: "pseg",
+        label: "PSE&G",
+        currentStateUrl: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
+      },
+      {
+        key: "ace",
+        label: "Atlantic City Electric",
+        currentStateUrl: "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false",
+      }
+    ];
 
     const REFRESH_MS = 120000;
     const FETCH_TIMEOUT_MS = 12000;
@@ -213,7 +222,15 @@
       return String(updatedRaw);
     }
 
-    // Parse regardless of content-type (data files can be served oddly)
+    function setDebug(key, url){
+      const u = proxied(url);
+      const a = document.getElementById(`dbg-${key}`);
+      if (a) a.href = u;
+      const t = document.getElementById(`dbgtext-${key}`);
+      if (t) t.textContent = u;
+    }
+
+    // Parse JSON regardless of content-type
     async function fetchJsonWithTimeout(targetUrl, timeoutMs){
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -233,87 +250,78 @@
       }
     }
 
-    // ✅ FIX: interval_generation_data is relative to /stormcenters/<id>/ (NOT /views/<viewId>/)
-    function buildDataUrlFromCurrentStateUrl(currentStateUrl, intervalPath){
-      // Extract: https://kubra.io/stormcenter/api/v1/stormcenters/<ID>
-      const m = currentStateUrl.match(/^(https:\/\/kubra\.io\/stormcenter\/api\/v1\/stormcenters\/[^\/]+)\//);
-      if (!m) throw new Error("Could not parse stormcenter base URL from currentState URL.");
-      const stormcenterBase = m[1];
-      return `${stormcenterBase}/${intervalPath}`;
+    // Build: .../stormcenters/<id>/views/<view>/<intervalPath>/public/summary-1/data.json
+    // This matches known working patterns for public totals. :contentReference[oaicite:1]{index=1}
+    function buildPublicSummaryUrl(currentStateUrl, intervalPath){
+      const m = currentStateUrl.match(
+        /^https:\/\/kubra\.io\/stormcenter\/api\/v1\/stormcenters\/([^\/]+)\/views\/([^\/]+)\//
+      );
+      if (!m) throw new Error("Could not parse INSTANCE_ID/VIEW_ID from currentState URL.");
+      const instanceId = m[1];
+      const viewId = m[2];
+      return `https://kubra.io/stormcenter/api/v1/stormcenters/${instanceId}/views/${viewId}/${intervalPath}/public/summary-1/data.json`;
     }
 
-    function extractCustomersOut(intervalJson){
-      const preferredKeys = new Set([
-        "customersOut","customers_out","customersWithoutService",
-        "customers_without_service","customersAffected","customers_affected",
-        "affectedCustomers","affected_customers",
-        "totalCustomersAffected","total_customers_affected",
-        "custOut","cust_out"
-      ]);
+    function extractTotalsFromSummaryJson(summaryJson){
+      // Known pattern: { summaryFileData: { date_generated, totals: {...} } } :contentReference[oaicite:2]{index=2}
+      const sfd = summaryJson && summaryJson.summaryFileData;
+      if (!sfd) return { customersAffected: null, outages: null, generated: null };
 
-      let bestPreferred = null;
-      let bestAny = null;
+      const totals = sfd.totals || {};
+      // try common keys
+      const customersAffected =
+        totals.customersAffected ?? totals.customers_affected ?? totals.customers_out ??
+        totals.customersOut ?? totals.totalCustomersAffected ?? null;
 
-      function consider(v, isPreferred){
-        if (typeof v !== "number" || !Number.isFinite(v)) return;
-        if (v < 0 || v > 20000000) return;
-        if (isPreferred) {
-          if (bestPreferred === null || v > bestPreferred) bestPreferred = v;
-        } else {
-          if (bestAny === null || v > bestAny) bestAny = v;
-        }
-      }
+      const outages =
+        totals.outages ?? totals.totalOutages ?? totals.activeOutages ?? totals.outageCount ?? null;
 
-      (function walk(node){
-        if (!node || typeof node !== "object") return;
-        for (const [k,v] of Object.entries(node)){
-          if (typeof v === "number") {
-            consider(v, preferredKeys.has(k));
-          } else if (v && typeof v === "object") {
-            walk(v);
-          }
-        }
-      })(intervalJson);
+      const generated = sfd.date_generated || sfd.dateGenerated || null;
 
-      return bestPreferred ?? bestAny;
+      return { customersAffected, outages, generated };
     }
 
-    function setDebug(key, url){
-      const dbgUrl = proxied(url);
-      const a = document.getElementById(`dbg-${key}`);
-      if (a) a.href = dbgUrl;
-      const t = document.getElementById(`dbgtext-${key}`);
-      if (t) t.textContent = dbgUrl;
-    }
+    async function loadUtility(u){
+      setStatus(u.key, "Updating…", "warn");
+      clearErr(u.key);
 
-    // Seed debug links with currentState URLs
-    for (const k of ["jcpl","pseg","ace"]) setDebug(k, ENDPOINTS[k]);
-
-    async function getUtilityOutages(key){
-      const currentStateUrl = ENDPOINTS[key];
+      // Start debug at currentState
+      setDebug(u.key, u.currentStateUrl);
 
       // 1) currentState
-      const currentState = await fetchJsonWithTimeout(currentStateUrl, FETCH_TIMEOUT_MS);
-
-      const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
+      const currentState = await fetchJsonWithTimeout(u.currentStateUrl, FETCH_TIMEOUT_MS);
       const intervalPath = currentState?.data?.interval_generation_data;
+      const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
+
       if (!intervalPath) throw new Error("currentState missing data.interval_generation_data");
 
-      // 2) data/<uuid> at stormcenter root (fix)
-      const dataUrl = buildDataUrlFromCurrentStateUrl(currentStateUrl, intervalPath);
+      // 2) public summary (no auth)
+      const summaryUrl = buildPublicSummaryUrl(u.currentStateUrl, intervalPath);
+      setDebug(u.key, summaryUrl);
 
-      // Update debug to the actual data URL (most useful)
-      setDebug(key, dataUrl);
+      const summaryJson = await fetchJsonWithTimeout(summaryUrl, FETCH_TIMEOUT_MS);
 
-      const intervalJson = await fetchJsonWithTimeout(dataUrl, FETCH_TIMEOUT_MS);
+      const { customersAffected, outages, generated } = extractTotalsFromSummaryJson(summaryJson);
 
-      const customersOut = extractCustomersOut(intervalJson);
-      if (typeof customersOut !== "number"){
-        const topKeys = Object.keys(intervalJson || {}).slice(0, 40).join(", ");
-        throw new Error("Could not locate outage total in data file. Top-level keys: " + topKeys);
+      if (typeof customersAffected !== "number") {
+        const topKeys = Object.keys(summaryJson || {}).slice(0, 30).join(", ");
+        throw new Error(
+          "Public summary loaded, but could not find customersAffected in summaryFileData.totals.\n" +
+          "Top-level keys: " + topKeys
+        );
       }
 
-      return { customersOut, updatedAtLocal: toLocalTimeString(updatedAt) };
+      document.getElementById(`out-${u.key}`).textContent = fmt(customersAffected);
+      const metaBits = [];
+      if (typeof outages === "number") metaBits.push(`Active outages: ${fmt(outages)}`);
+      const upd = toLocalTimeString(updatedAt);
+      if (upd) metaBits.push(`Map updated: ${upd}`);
+      const gen = toLocalTimeString(generated) || generated;
+      if (gen) metaBits.push(`Summary generated: ${gen}`);
+      document.getElementById(`dt-${u.key}`).textContent = metaBits.length ? metaBits.join(" · ") : "—";
+
+      setStatus(u.key, "OK", "ok");
+      return customersAffected;
     }
 
     async function refresh(){
@@ -323,31 +331,20 @@
       let included = 0;
       let errors = 0;
 
-      const keysToLoad = ["jcpl","pseg","ace"];
-
-      for (const key of keysToLoad){
-        clearErr(key);
-        setStatus(key, "Updating…", "warn");
-
+      for (const u of UTIL){
         try{
-          const data = await getUtilityOutages(key);
-          document.getElementById(`out-${key}`).textContent = fmt(data.customersOut);
-          document.getElementById(`dt-${key}`).textContent =
-            data.updatedAtLocal ? `Feed updated: ${data.updatedAtLocal}` : "Feed updated: —";
-          setStatus(key, "OK", "ok");
-
-          total += data.customersOut;
+          const n = await loadUtility(u);
+          total += n;
           included++;
-        }catch(err){
-          const msg = (err && err.message) ? err.message : String(err);
-          showErr(key, msg);
-          document.getElementById(`out-${key}`).textContent = "—";
-          document.getElementById(`dt-${key}`).textContent = "—";
+        } catch (err){
           errors++;
+          const msg = (err && err.message) ? err.message : String(err);
+          showErr(u.key, msg);
+          document.getElementById(`out-${u.key}`).textContent = "—";
+          document.getElementById(`dt-${u.key}`).textContent = "—";
         }
       }
 
-      // total card
       const totalOutEl = document.getElementById("totalOut");
       const totalDetailEl = document.getElementById("totalDetail");
       const totalStatusDot = document.querySelector("#totalStatus .dot");
@@ -370,7 +367,7 @@
         totalStatusText.textContent = "Not available";
         totalErrEl.style.display = "block";
         totalErrEl.textContent =
-          "All feeds failed. Check per-utility errors; debug URLs are printed on each card.";
+          "All feeds failed. Use the per-utility debug URLs to see what the Worker returns.";
       }
 
       document.getElementById("lastUpdated").textContent = new Date().toLocaleString();
