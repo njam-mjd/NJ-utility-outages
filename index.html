@@ -89,7 +89,8 @@
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
         <div class="note">
-          If you see “CORS blocked,” use the proxy option below (Cloudflare Worker) and point the widget at your proxy URLs.
+          Powered by your Cloudflare Worker proxy:
+          <span class="mono">nj-outages-proxy.timesoftrenton.workers.dev</span>
         </div>
       </div>
 
@@ -153,23 +154,21 @@
   </div>
 
   <script>
-    // If you end up needing a proxy, set PROXY_PREFIX to your proxy base
-    // and the code will call: `${PROXY_PREFIX}${encodeURIComponent(realUrl)}`
-    // Example: PROXY_PREFIX = "https://YOURWORKER.your-subdomain.workers.dev/?url="
-    const PROXY_PREFIX = ""; // leave "" unless you deploy a proxy
+    /**
+     * Cloudflare Worker proxy prefix (your deployed worker)
+     * Calls become:
+     *   https://nj-outages-proxy.timesoftrenton.workers.dev/?url=<ENCODED_TARGET_URL>
+     */
+    const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
 
+    /**
+     * Your 3 provided currentState endpoints
+     */
     const ENDPOINTS = {
       jcpl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
       pseg: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
       ace:  "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false"
-      // ORU goes here when you paste it
-    };
-
-    const META = {
-      jcpl: { label: "JCP&L (FirstEnergy)" },
-      pseg: { label: "PSE&G" },
-      ace:  { label: "Atlantic City Electric" },
-      oru:  { label: "Orange & Rockland (ORU)" }
+      // Add ORU currentState URL here when you have it
     };
 
     const REFRESH_MS = 120000;
@@ -199,7 +198,6 @@
       if (n === null || n === undefined || Number.isNaN(n)) return "—";
       return new Intl.NumberFormat("en-US").format(n);
     }
-
     function toLocalTimeString(updatedRaw){
       if (!updatedRaw) return null;
       if (typeof updatedRaw === "number"){
@@ -210,28 +208,23 @@
       if (!Number.isNaN(d.getTime())) return d.toLocaleString();
       return String(updatedRaw);
     }
-
     function proxied(url){
-      return PROXY_PREFIX ? (PROXY_PREFIX + encodeURIComponent(url)) : url;
+      return PROXY_PREFIX + encodeURIComponent(url);
     }
-
     async function fetchJson(url){
-      // If CORS blocks, fetch() throws TypeError in browser.
       const res = await fetch(proxied(url), { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     }
 
-    // KUBRA currentState gives you data pointers like "data/<uuid>".
-    // We'll build a second URL by stripping after /views/<VIEW_ID>/ and appending that relative path.
+    // Build second URL: base ".../views/<viewId>" + "/data/<uuid>"
     function buildSecondUrl(currentStateUrl, relativePath){
-      const parts = currentStateUrl.split("/currentState?")[0]; // .../views/<viewId>
-      return `${parts}/${relativePath}`;
+      const base = currentStateUrl.split("/currentState?")[0]; // .../views/<viewId>
+      return `${base}/${relativePath}`;
     }
 
-    // Pull the outage count from interval_generation_data (schema varies by utility),
-    // so we use robust heuristics: check common keys, otherwise choose the largest plausible count.
-    function extractCustomersOutFromInterval(intervalJson){
+    // Extract outage count from interval_generation_data (schema varies)
+    function extractCustomersOut(intervalJson){
       const preferredKeys = new Set([
         "customersOut","customers_out","customersWithoutService",
         "affectedCustomers","affected_customers","customersAffected","customers_affected",
@@ -244,8 +237,7 @@
       function consider(v){
         if (typeof v !== "number") return;
         if (!Number.isFinite(v)) return;
-        // plausible NJ utility scale guardrail
-        if (v < 0 || v > 20000000) return;
+        if (v < 0 || v > 20000000) return; // guardrail
         if (best === null || v > best) best = v;
       }
 
@@ -253,13 +245,8 @@
         if (!node || typeof node !== "object") return;
         for (const [k,v] of Object.entries(node)){
           if (typeof v === "number"){
-            if (preferredKeys.has(k)) {
-              // prefer direct match immediately
-              consider(v);
-            } else {
-              // still consider numeric values (some feeds store totals under generic keys)
-              consider(v);
-            }
+            if (preferredKeys.has(k)) consider(v);
+            else consider(v);
           } else if (v && typeof v === "object"){
             walk(v);
           }
@@ -274,9 +261,10 @@
       const currentStateUrl = ENDPOINTS[key];
       if (!currentStateUrl) throw new Error("No endpoint configured.");
 
+      // 1) currentState
       const currentState = await fetchJson(currentStateUrl);
 
-      // These fields are visible in your currentState payloads. :contentReference[oaicite:1]{index=1}
+      // 2) interval_generation_data pointer
       const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
       const intervalPath = currentState?.data?.interval_generation_data;
 
@@ -284,21 +272,17 @@
         throw new Error("currentState missing data.interval_generation_data (schema changed).");
       }
 
+      // 3) interval_generation_data file
       const intervalUrl = buildSecondUrl(currentStateUrl, intervalPath);
       const intervalJson = await fetchJson(intervalUrl);
 
-      const customersOut = extractCustomersOutFromInterval(intervalJson);
-
+      const customersOut = extractCustomersOut(intervalJson);
       if (typeof customersOut !== "number") {
-        // Show useful debug (but not huge)
-        const keys = Object.keys(intervalJson || {}).slice(0, 30).join(", ");
+        const keys = Object.keys(intervalJson || {}).slice(0, 40).join(", ");
         throw new Error("Could not locate outage total in interval file. Top-level keys: " + keys);
       }
 
-      return {
-        customersOut,
-        updatedAtLocal: toLocalTimeString(updatedAt)
-      };
+      return { customersOut, updatedAtLocal: toLocalTimeString(updatedAt) };
     }
 
     async function refresh(){
@@ -326,5 +310,46 @@
         }catch(err){
           console.error(key, err);
           const msg = (err && err.message) ? err.message : String(err);
+          showErr(key, msg);
+          document.getElementById(`out-${key}`).textContent = "—";
+          document.getElementById(`dt-${key}`).textContent = "—";
+          errors++;
+        }
+      }
 
-          // Detect common browser CORS fa
+      // total card
+      const totalOutEl = document.getElementById("totalOut");
+      const totalDetailEl = document.getElementById("totalDetail");
+      const totalStatusDot = document.querySelector("#totalStatus .dot");
+      const totalStatusText = document.getElementById("totalStatusText");
+      const totalErrEl = document.getElementById("totalErr");
+
+      if (included > 0){
+        totalOutEl.textContent = fmt(total);
+        totalDetailEl.textContent = `Included ${included} feed(s). ${errors ? `${errors} failed.` : ""}`.trim();
+        totalStatusDot.classList.remove("ok","warn","bad");
+        totalStatusDot.classList.add(errors ? "warn" : "ok");
+        totalStatusText.textContent = errors ? "Partial" : "OK";
+        totalErrEl.style.display = "none";
+        totalErrEl.textContent = "";
+      } else {
+        totalOutEl.textContent = "—";
+        totalDetailEl.textContent = "No feeds loaded.";
+        totalStatusDot.classList.remove("ok","warn","bad");
+        totalStatusDot.classList.add("bad");
+        totalStatusText.textContent = "Not available";
+        totalErrEl.style.display = "block";
+        totalErrEl.textContent =
+          "All feeds failed. Open DevTools → Console to see the exact error. " +
+          "If your Worker is restricting hosts, make sure it allows kubra.io.";
+      }
+
+      document.getElementById("lastUpdated").textContent = new Date().toLocaleString();
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>
