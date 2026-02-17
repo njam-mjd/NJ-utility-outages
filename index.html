@@ -17,7 +17,7 @@
       color:var(--text);
       padding:18px;
     }
-    .wrap{max-width:920px;margin:0 auto}
+    .wrap{max-width:980px;margin:0 auto}
     .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
     h1{margin:0;font-size:22px;font-weight:750;letter-spacing:.2px}
     .sub{margin-top:6px;color:var(--muted);font-size:13px}
@@ -32,7 +32,7 @@
       padding:14px 14px 12px;
       box-shadow:0 10px 28px rgba(0,0,0,.25);
     }
-    @media(min-width:720px){
+    @media(min-width:820px){
       .card{grid-column:span 6}
       .card.total{grid-column:span 12}
     }
@@ -63,9 +63,9 @@
     <div class="header">
       <div>
         <h1>New Jersey Power Outages</h1>
-        <div class="sub">KUBRA Storm Center totals via public summary JSON (auto-refresh).</div>
+        <div class="sub">Totals scraped from public outage-map pages via your Cloudflare Worker proxy (auto-refresh).</div>
         <div class="pillrow">
-          <div class="pill">Refresh: <span class="mono" id="refreshEvery">120s</span></div>
+          <div class="pill">Refresh: <span class="mono" id="refreshEvery">180s</span></div>
           <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
           <div class="pill">Proxy: <span class="mono">nj-outages-proxy.timesoftrenton.workers.dev</span></div>
         </div>
@@ -78,7 +78,7 @@
         <div class="row">
           <div>
             <div class="name">Statewide total (sum of loaded feeds)</div>
-            <div class="meta">If a feed errors, it won’t be included.</div>
+            <div class="meta">If a utility page format changes or errors, it won’t be included.</div>
           </div>
           <div class="status" id="totalStatus"><span class="dot warn"></span><span id="totalStatusText">Loading…</span></div>
         </div>
@@ -87,12 +87,13 @@
         <div class="err" id="totalErr"></div>
       </div>
 
+      <!-- JCP&L / FirstEnergy NJ -->
       <div class="card" id="card-jcpl">
         <div class="row">
           <div>
             <div class="name">JCP&amp;L (FirstEnergy)</div>
             <div class="meta">
-              <a href="https://www.firstenergycorp.com/jersey_central_power_light.html" target="_blank" rel="noreferrer">Utility site</a>
+              <a href="https://outages-nj.firstenergycorp.com/" target="_blank" rel="noreferrer">Utility outage map</a>
               · <a href="#" id="dbg-jcpl" target="_blank" rel="noreferrer">Debug link</a>
             </div>
             <div class="small mono" id="dbgtext-jcpl"></div>
@@ -104,12 +105,13 @@
         <div class="err" id="err-jcpl"></div>
       </div>
 
+      <!-- PSE&G -->
       <div class="card" id="card-pseg">
         <div class="row">
           <div>
             <div class="name">PSE&amp;G</div>
             <div class="meta">
-              <a href="https://nj.pseg.com/" target="_blank" rel="noreferrer">Utility site</a>
+              <a href="https://outagecenter.pseg.com/" target="_blank" rel="noreferrer">Utility outage map</a>
               · <a href="#" id="dbg-pseg" target="_blank" rel="noreferrer">Debug link</a>
             </div>
             <div class="small mono" id="dbgtext-pseg"></div>
@@ -121,12 +123,13 @@
         <div class="err" id="err-pseg"></div>
       </div>
 
+      <!-- Atlantic City Electric -->
       <div class="card" id="card-ace">
         <div class="row">
           <div>
             <div class="name">Atlantic City Electric</div>
             <div class="meta">
-              <a href="https://www.atlanticcityelectric.com/" target="_blank" rel="noreferrer">Utility site</a>
+              <a href="https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx" target="_blank" rel="noreferrer">Utility outage map</a>
               · <a href="#" id="dbg-ace" target="_blank" rel="noreferrer">Debug link</a>
             </div>
             <div class="small mono" id="dbgtext-ace"></div>
@@ -138,13 +141,18 @@
         <div class="err" id="err-ace"></div>
       </div>
 
+      <!-- Orange & Rockland -->
       <div class="card" id="card-oru">
         <div class="row">
           <div>
             <div class="name">Orange &amp; Rockland (ORU)</div>
-            <div class="meta"><a href="https://www.oru.com/en" target="_blank" rel="noreferrer">Utility site</a></div>
+            <div class="meta">
+              <a href="https://outagemap.oru.com/" target="_blank" rel="noreferrer">Utility outage map</a>
+              · <a href="#" id="dbg-oru" target="_blank" rel="noreferrer">Debug link</a>
+            </div>
+            <div class="small mono" id="dbgtext-oru"></div>
           </div>
-          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Setup needed</span></div>
+          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Loading…</span></div>
         </div>
         <div class="big" id="out-oru">—</div>
         <div class="small" id="dt-oru">—</div>
@@ -154,38 +162,62 @@
 
     <div class="foot">
       Embed:
-      <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="520" style="border:0"&gt;&lt;/iframe&gt;</span>
+      <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="560" style="border:0"&gt;&lt;/iframe&gt;</span>
     </div>
   </div>
 
   <script>
     const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
 
-    // Your 3 provided currentState URLs
-    const UTIL = [
+    const UTILITIES = [
       {
         key: "jcpl",
-        label: "JCP&L (FirstEnergy)",
-        currentStateUrl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
+        // FirstEnergy NJ Storm Center shows "Customers Out" on the page. :contentReference[oaicite:4]{index=4}
+        pageUrl: "https://outages-nj.firstenergycorp.com/",
+        parse: (html) => extractNumberAfterLabel(html, [
+          "Customers Out", "Customers\\s*Out"
+        ])
       },
       {
         key: "pseg",
-        label: "PSE&G",
-        currentStateUrl: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
+        // PSE&G page contains "Affected Customers:" and "Active Outages:" in HTML. :contentReference[oaicite:5]{index=5}
+        pageUrl: "https://outagecenter.pseg.com/",
+        parse: (html) => extractNumberAfterLabel(html, [
+          "Affected Customers", "Affected\\s*Customers"
+        ])
       },
       {
         key: "ace",
-        label: "Atlantic City Electric",
-        currentStateUrl: "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false",
+        // ACE outage map shows "Total Customers Affected" in HTML. :contentReference[oaicite:6]{index=6}
+        pageUrl: "https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx",
+        parse: (html) => extractNumberAfterLabel(html, [
+          "Total Customers Affected", "Total\\s*Customers\\s*Affected"
+        ])
+      },
+      {
+        key: "oru",
+        // ORU outage map shows "Customers Out of Service". :contentReference[oaicite:7]{index=7}
+        pageUrl: "https://outagemap.oru.com/",
+        parse: (html) => extractNumberAfterLabel(html, [
+          "Customers Out of Service", "Customers\\s*Out\\s*of\\s*Service"
+        ])
       }
     ];
 
-    const REFRESH_MS = 120000;
-    const FETCH_TIMEOUT_MS = 12000;
+    const REFRESH_MS = 180000;      // 3 minutes
+    const TIMEOUT_MS = 12000;       // 12 seconds
 
     document.getElementById("refreshEvery").textContent = (REFRESH_MS/1000) + "s";
 
     function proxied(url){ return PROXY_PREFIX + encodeURIComponent(url); }
+
+    function setDebug(key, url){
+      const u = proxied(url);
+      const a = document.getElementById(`dbg-${key}`);
+      if (a) a.href = u;
+      const t = document.getElementById(`dbgtext-${key}`);
+      if (t) t.textContent = u;
+    }
 
     function setDot(key, state){
       const dot = document.getElementById(`dot-${key}`);
@@ -211,27 +243,8 @@
       if (n === null || n === undefined || Number.isNaN(n)) return "—";
       return new Intl.NumberFormat("en-US").format(n);
     }
-    function toLocalTimeString(updatedRaw){
-      if (!updatedRaw) return null;
-      if (typeof updatedRaw === "number"){
-        const ms = updatedRaw < 2e10 ? updatedRaw * 1000 : updatedRaw;
-        return new Date(ms).toLocaleString();
-      }
-      const d = new Date(updatedRaw);
-      if (!Number.isNaN(d.getTime())) return d.toLocaleString();
-      return String(updatedRaw);
-    }
 
-    function setDebug(key, url){
-      const u = proxied(url);
-      const a = document.getElementById(`dbg-${key}`);
-      if (a) a.href = u;
-      const t = document.getElementById(`dbgtext-${key}`);
-      if (t) t.textContent = u;
-    }
-
-    // Parse JSON regardless of content-type
-    async function fetchJsonWithTimeout(targetUrl, timeoutMs){
+    async function fetchTextWithTimeout(targetUrl, timeoutMs){
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try{
@@ -240,8 +253,7 @@
         if (!res.ok){
           throw new Error(`HTTP ${res.status}\nBody (first 300): ${bodyText.slice(0,300)}`);
         }
-        try { return JSON.parse(bodyText); }
-        catch { throw new Error(`Not JSON (parse failed)\nBody (first 300): ${bodyText.slice(0,300)}`); }
+        return bodyText;
       } catch (err){
         if (err && err.name === "AbortError") throw new Error(`Timed out after ${timeoutMs/1000}s`);
         throw err;
@@ -250,132 +262,30 @@
       }
     }
 
-    // Build: .../stormcenters/<id>/views/<view>/<intervalPath>/public/summary-1/data.json
-    // This matches known working patterns for public totals. :contentReference[oaicite:1]{index=1}
-    function buildPublicSummaryUrl(currentStateUrl, intervalPath){
-      const m = currentStateUrl.match(
-        /^https:\/\/kubra\.io\/stormcenter\/api\/v1\/stormcenters\/([^\/]+)\/views\/([^\/]+)\//
-      );
-      if (!m) throw new Error("Could not parse INSTANCE_ID/VIEW_ID from currentState URL.");
-      const instanceId = m[1];
-      const viewId = m[2];
-      return `https://kubra.io/stormcenter/api/v1/stormcenters/${instanceId}/views/${viewId}/${intervalPath}/public/summary-1/data.json`;
-    }
-
-    function extractTotalsFromSummaryJson(summaryJson){
-      // Known pattern: { summaryFileData: { date_generated, totals: {...} } } :contentReference[oaicite:2]{index=2}
-      const sfd = summaryJson && summaryJson.summaryFileData;
-      if (!sfd) return { customersAffected: null, outages: null, generated: null };
-
-      const totals = sfd.totals || {};
-      // try common keys
-      const customersAffected =
-        totals.customersAffected ?? totals.customers_affected ?? totals.customers_out ??
-        totals.customersOut ?? totals.totalCustomersAffected ?? null;
-
-      const outages =
-        totals.outages ?? totals.totalOutages ?? totals.activeOutages ?? totals.outageCount ?? null;
-
-      const generated = sfd.date_generated || sfd.dateGenerated || null;
-
-      return { customersAffected, outages, generated };
+    // Extract a number that appears after one of the label patterns.
+    // Handles commas, HTML tags, extra whitespace.
+    function extractNumberAfterLabel(html, labelPatterns){
+      const cleaned = html.replace(/\s+/g, " "); // reduce whitespace
+      for (const lp of labelPatterns){
+        // Look for: label ... optional punctuation ... number
+        const re = new RegExp(lp + "[^0-9]{0,80}([0-9][0-9,]*)", "i");
+        const m = cleaned.match(re);
+        if (m && m[1]) {
+          const n = parseInt(m[1].replace(/,/g,""), 10);
+          if (Number.isFinite(n)) return n;
+        }
+      }
+      return null;
     }
 
     async function loadUtility(u){
-      setStatus(u.key, "Updating…", "warn");
       clearErr(u.key);
+      setStatus(u.key, "Updating…", "warn");
+      setDebug(u.key, u.pageUrl);
 
-      // Start debug at currentState
-      setDebug(u.key, u.currentStateUrl);
+      const html = await fetchTextWithTimeout(u.pageUrl, TIMEOUT_MS);
+      const out = u.parse(html);
 
-      // 1) currentState
-      const currentState = await fetchJsonWithTimeout(u.currentStateUrl, FETCH_TIMEOUT_MS);
-      const intervalPath = currentState?.data?.interval_generation_data;
-      const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
-
-      if (!intervalPath) throw new Error("currentState missing data.interval_generation_data");
-
-      // 2) public summary (no auth)
-      const summaryUrl = buildPublicSummaryUrl(u.currentStateUrl, intervalPath);
-      setDebug(u.key, summaryUrl);
-
-      const summaryJson = await fetchJsonWithTimeout(summaryUrl, FETCH_TIMEOUT_MS);
-
-      const { customersAffected, outages, generated } = extractTotalsFromSummaryJson(summaryJson);
-
-      if (typeof customersAffected !== "number") {
-        const topKeys = Object.keys(summaryJson || {}).slice(0, 30).join(", ");
-        throw new Error(
-          "Public summary loaded, but could not find customersAffected in summaryFileData.totals.\n" +
-          "Top-level keys: " + topKeys
-        );
-      }
-
-      document.getElementById(`out-${u.key}`).textContent = fmt(customersAffected);
-      const metaBits = [];
-      if (typeof outages === "number") metaBits.push(`Active outages: ${fmt(outages)}`);
-      const upd = toLocalTimeString(updatedAt);
-      if (upd) metaBits.push(`Map updated: ${upd}`);
-      const gen = toLocalTimeString(generated) || generated;
-      if (gen) metaBits.push(`Summary generated: ${gen}`);
-      document.getElementById(`dt-${u.key}`).textContent = metaBits.length ? metaBits.join(" · ") : "—";
-
-      setStatus(u.key, "OK", "ok");
-      return customersAffected;
-    }
-
-    async function refresh(){
-      document.getElementById("lastUpdated").textContent = "Loading…";
-
-      let total = 0;
-      let included = 0;
-      let errors = 0;
-
-      for (const u of UTIL){
-        try{
-          const n = await loadUtility(u);
-          total += n;
-          included++;
-        } catch (err){
-          errors++;
-          const msg = (err && err.message) ? err.message : String(err);
-          showErr(u.key, msg);
-          document.getElementById(`out-${u.key}`).textContent = "—";
-          document.getElementById(`dt-${u.key}`).textContent = "—";
-        }
-      }
-
-      const totalOutEl = document.getElementById("totalOut");
-      const totalDetailEl = document.getElementById("totalDetail");
-      const totalStatusDot = document.querySelector("#totalStatus .dot");
-      const totalStatusText = document.getElementById("totalStatusText");
-      const totalErrEl = document.getElementById("totalErr");
-
-      if (included > 0){
-        totalOutEl.textContent = fmt(total);
-        totalDetailEl.textContent = `Included ${included} feed(s). ${errors ? `${errors} failed.` : ""}`.trim();
-        totalStatusDot.classList.remove("ok","warn","bad");
-        totalStatusDot.classList.add(errors ? "warn" : "ok");
-        totalStatusText.textContent = errors ? "Partial" : "OK";
-        totalErrEl.style.display = "none";
-        totalErrEl.textContent = "";
-      } else {
-        totalOutEl.textContent = "—";
-        totalDetailEl.textContent = "No feeds loaded.";
-        totalStatusDot.classList.remove("ok","warn","bad");
-        totalStatusDot.classList.add("bad");
-        totalStatusText.textContent = "Not available";
-        totalErrEl.style.display = "block";
-        totalErrEl.textContent =
-          "All feeds failed. Use the per-utility debug URLs to see what the Worker returns.";
-      }
-
-      document.getElementById("lastUpdated").textContent = new Date().toLocaleString();
-    }
-
-    document.getElementById("refreshBtn").addEventListener("click", refresh);
-    refresh();
-    setInterval(refresh, REFRESH_MS);
-  </script>
-</body>
-</html>
+      if (!Number.isFinite(out)) {
+        // show a hint: this means the page HTML format changed
+        throw new Err
