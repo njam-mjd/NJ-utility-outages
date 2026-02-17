@@ -45,7 +45,7 @@
     <div class="header">
       <div>
         <h1>New Jersey Power Outages</h1>
-        <div class="sub">Totals scraped from public outage pages via your Cloudflare Worker (timeouts + diagnostics).</div>
+        <div class="sub">Totals pulled from server-rendered outage summary pages via your Cloudflare Worker.</div>
         <div class="pillrow">
           <div class="pill">Refresh: <span class="mono" id="refreshEvery">180s</span></div>
           <div class="pill">Last updated: <span class="mono" id="lastUpdated">—</span></div>
@@ -66,7 +66,6 @@
         </div>
         <div class="big" id="totalOut">—</div>
         <div class="small" id="totalDetail">—</div>
-        <div class="err" id="totalErr"></div>
       </div>
 
       <div class="card" id="card-jcpl">
@@ -91,7 +90,7 @@
           <div>
             <div class="name">PSE&amp;G</div>
             <div class="meta">
-              <a href="https://outagecenter.pseg.com/" target="_blank" rel="noreferrer">Outage center</a>
+              <a href="https://nj.pseg.com/" target="_blank" rel="noreferrer">Utility site</a>
               · <a href="#" id="dbg-pseg" target="_blank" rel="noreferrer">Debug link</a>
             </div>
             <div class="small mono" id="dbgtext-pseg"></div>
@@ -108,7 +107,7 @@
           <div>
             <div class="name">Atlantic City Electric</div>
             <div class="meta">
-              <a href="https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx" target="_blank" rel="noreferrer">Outage map</a>
+              <a href="https://www.atlanticcityelectric.com/" target="_blank" rel="noreferrer">Utility site</a>
               · <a href="#" id="dbg-ace" target="_blank" rel="noreferrer">Debug link</a>
             </div>
             <div class="small mono" id="dbgtext-ace"></div>
@@ -125,7 +124,7 @@
           <div>
             <div class="name">Orange &amp; Rockland (ORU)</div>
             <div class="meta">
-              <a href="https://outagemap.oru.com/" target="_blank" rel="noreferrer">Outage map</a>
+              <a href="https://www.oru.com/en" target="_blank" rel="noreferrer">Utility site</a>
               · <a href="#" id="dbg-oru" target="_blank" rel="noreferrer">Debug link</a>
             </div>
             <div class="small mono" id="dbgtext-oru"></div>
@@ -153,15 +152,18 @@
   <script>
     const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
 
-    // ✅ Hardcoded "real" pages that actually render totals server-side:
-    // JCPL: FirstEnergy NJ static S3 HTML
-    // PSEG: external default HTML
-    // ORU: external default HTML (skip the meta refresh stub)
-    // ACE: outage map page (may or may not contain totals; we’ll try)
+    // ✅ Use server-rendered "reports" pages (these include "Outage Summary" numbers in HTML):
     const UTILITIES = [
-      { key: "jcpl", url: "https://s3.amazonaws.com/outages.sc4.firstenergycorp.com/nj/default.html" },
-      { key: "pseg", url: "https://outagecenter.pseg.com/external/default.html" },
-      { key: "ace",  url: "https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx" },
+      // FirstEnergy NJ: Customers Out by County/Muni report page (server-rendered)
+      { key: "jcpl", url: "https://outages-nj.firstenergycorp.com/reports/10ecc9a7-094a-46e3-a733-cbebe39cf407?c=External_NJ&o=View_by_Area" },
+
+      // PSE&G: server-rendered report page
+      { key: "pseg", url: "https://outagecenter.pseg.com/external/default.html/reports/e2d9e8d8-113c-423b-af59-0de1bc440376?language=EN-US" },
+
+      // Atlantic City Electric: server-rendered KUBRA report page
+      { key: "ace",  url: "https://kubra.io/stormcenter/views/f9accd4d-75d9-4e7a-ad5b-d81abd62b2ed/reports/693f8267-5a6f-4c94-908e-a13175d4b1cd" },
+
+      // ORU: external page (if this is still shell-only for you, we’ll swap to ORU’s report URL)
       { key: "oru",  url: "https://outagemap.oru.com/external/default.html" }
     ];
 
@@ -237,87 +239,42 @@
         .trim();
     }
 
-    // 1) Inline JSON keys (if present)
-    function extractFromJsonKeys(rawHtml){
-      const keys = [
-        "customersOut","customers_out",
-        "customersAffected","customers_affected",
-        "customersOutOfService","customers_out_of_service",
-        "totalCustomersAffected","total_customers_affected",
-        "affectedCustomers","affected_customers"
+    function extractOutageTotal(rawHtml){
+      // Prefer explicit phrases used across Storm Center pages
+      const text = toText(rawHtml);
+
+      const patterns = [
+        /Customers\s+Out\s*[^0-9]{0,200}([0-9][0-9,]*)/i,
+        /Customers\s+Out\s+of\s+Service\s*[^0-9]{0,200}([0-9][0-9,]*)/i,
+        /Affected\s+Customers\s*[^0-9]{0,200}([0-9][0-9,]*)/i,
+        /Total\s+Customers\s+Affect(?:ed)?\s*[^0-9]{0,200}([0-9][0-9,]*)/i
       ];
-      for (const k of keys){
-        const re = new RegExp(`"${k}"\\s*:\\s*([0-9]{1,9})`, "i");
-        const m = rawHtml.match(re);
+
+      for (const re of patterns){
+        const m = text.match(re);
         if (m && m[1]) {
-          const n = parseInt(m[1], 10);
+          const n = parseInt(m[1].replace(/,/g,""), 10);
           if (Number.isFinite(n)) return n;
         }
       }
-      return null;
-    }
 
-    // 2) Loose phrase matching
-    function extractByLooseLabels(text){
-      const labelVariants = [
-        "customers out",
-        "customers affected",
-        "affected customers",
-        "customers impacted",
-        "customers without service",
-        "out of service",
-        "without service",
-        "total customers affected",
-        "total affected customers",
-        "outages"
-      ];
-
-      for (const lbl of labelVariants){
-        const re = new RegExp(lbl.replace(/\s+/g,"\\s*") + "[^0-9]{0,1600}([0-9][0-9,]*)", "i");
-        const m = text.match(re);
-        if (m && m[1]) return parseInt(m[1].replace(/,/g,""), 10);
-      }
-
-      for (const lbl of labelVariants){
-        const re = new RegExp("([0-9][0-9,]*)[^a-zA-Z]{0,80}" + lbl.replace(/\s+/g,"\\s*"), "i");
-        const m = text.match(re);
-        if (m && m[1]) return parseInt(m[1].replace(/,/g,""), 10);
-      }
-
-      return null;
-    }
-
-    // 3) Scored fallback
-    function extractByScoring(text){
-      const keywords = [
-        "customer","customers",
-        "affected","impacted",
-        "out","outage","outages",
-        "service","without","restoration",
-        "of service"
-      ];
-
+      // Scored fallback: pick number closest to outage/customer keywords
+      const keywords = ["customer","customers","out","outage","outages","affected","service","without"];
       const numRe = /([0-9][0-9,]*)/g;
       let best = { score: -1, value: null };
 
       let m;
       while ((m = numRe.exec(text)) !== null) {
-        const raw = m[1];
-        const value = parseInt(raw.replace(/,/g,""), 10);
-        if (!Number.isFinite(value)) continue;
-        if (value > 20000000) continue;
+        const value = parseInt(m[1].replace(/,/g,""), 10);
+        if (!Number.isFinite(value) || value > 20000000) continue;
 
         const idx = m.index;
-        const window = text.slice(Math.max(0, idx - 160), Math.min(text.length, idx + 160)).toLowerCase();
+        const w = text.slice(Math.max(0, idx - 140), Math.min(text.length, idx + 140)).toLowerCase();
 
         let score = 0;
-        for (const kw of keywords) if (window.includes(kw)) score += 1;
-
-        if (window.includes("customers") || window.includes("customer")) score += 2;
-        if (window.includes("out of service") || window.includes("without service")) score += 2;
-        if (window.includes("affected")) score += 2;
-
-        if (window.includes("served")) score -= 2;
+        for (const kw of keywords) if (w.includes(kw)) score += 1;
+        if (w.includes("customers")) score += 2;
+        if (w.includes("served")) score -= 2;
 
         if (score > best.score || (score === best.score && value > (best.value ?? -1))) {
           best = { score, value };
@@ -327,20 +284,6 @@
       return best.value;
     }
 
-    function extractOutageTotal(rawHtml){
-      const j = extractFromJsonKeys(rawHtml);
-      if (Number.isFinite(j)) return j;
-
-      const text = toText(rawHtml);
-      const l = extractByLooseLabels(text);
-      if (Number.isFinite(l)) return l;
-
-      const s = extractByScoring(text);
-      if (Number.isFinite(s)) return s;
-
-      return null;
-    }
-
     async function loadOne(u){
       clearErr(u.key);
       setStatus(u.key, "Updating…", "warn");
@@ -348,17 +291,16 @@
 
       const r = await fetchTextViaWorker(u.url, TIMEOUT_MS);
       diagLine(u.key, `HTTP ${r.status} | ${(r.text||"").slice(0,160).replace(/\s+/g," ")}`);
-
       if (!r.ok) throw new Error(`HTTP ${r.status}\nBody (first 300): ${(r.text||"").slice(0,300)}`);
 
       const n = extractOutageTotal(r.text);
       if (!Number.isFinite(n)) {
-        const snippet = toText(r.text).slice(0, 600);
+        const snippet = toText(r.text).slice(0, 700);
         throw new Error("Could not find outage total.\nStripped text snippet:\n" + snippet);
       }
 
       document.getElementById(`out-${u.key}`).textContent = fmt(n);
-      document.getElementById(`dt-${u.key}`).textContent = "Source: outage page summary (via Worker)";
+      document.getElementById(`dt-${u.key}`).textContent = "Source: outage summary page (via Worker)";
       setStatus(u.key, "OK", "ok");
       return n;
     }
