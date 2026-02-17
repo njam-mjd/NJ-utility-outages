@@ -153,16 +153,16 @@
   <script>
     const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
 
-    // Sources chosen to be fetchable without cookies:
-    // - FirstEnergy NJ: static S3 HTML
-    // - PSE&G: /external/default.html
-    // - ORU: root meta-refreshes to /external/default.html (we auto-follow)
-    // - ACE: their outage map page (may embed summary in HTML)
+    // ✅ Hardcoded "real" pages that actually render totals server-side:
+    // JCPL: FirstEnergy NJ static S3 HTML
+    // PSEG: external default HTML
+    // ORU: external default HTML (skip the meta refresh stub)
+    // ACE: outage map page (may or may not contain totals; we’ll try)
     const UTILITIES = [
       { key: "jcpl", url: "https://s3.amazonaws.com/outages.sc4.firstenergycorp.com/nj/default.html" },
       { key: "pseg", url: "https://outagecenter.pseg.com/external/default.html" },
       { key: "ace",  url: "https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx" },
-      { key: "oru",  url: "https://outagemap.oru.com/" }
+      { key: "oru",  url: "https://outagemap.oru.com/external/default.html" }
     ];
 
     const REFRESH_MS = 180000;
@@ -227,14 +227,6 @@
       }
     }
 
-    // Meta refresh detector (ORU root does this)
-    function metaRefreshTarget(html){
-      const m = html.match(/http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"']+)["']/i)
-             || html.match(/content=["'][^"']*url=([^"']+)["'][^>]*http-equiv=["']refresh["']/i);
-      if (!m) return null;
-      return m[1].trim().replace(/^URL=/i,"");
-    }
-
     function toText(html){
       return html
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
@@ -245,7 +237,7 @@
         .trim();
     }
 
-    // 1) Try common embedded JSON keys (sometimes totals are in inline JSON)
+    // 1) Inline JSON keys (if present)
     function extractFromJsonKeys(rawHtml){
       const keys = [
         "customersOut","customers_out",
@@ -265,7 +257,7 @@
       return null;
     }
 
-    // 2) Loose phrase matching (label->number and number->label)
+    // 2) Loose phrase matching
     function extractByLooseLabels(text){
       const labelVariants = [
         "customers out",
@@ -276,17 +268,18 @@
         "out of service",
         "without service",
         "total customers affected",
-        "total affected customers"
+        "total affected customers",
+        "outages"
       ];
 
       for (const lbl of labelVariants){
-        const re = new RegExp(lbl.replace(/\s+/g,"\\s*") + "[^0-9]{0,1400}([0-9][0-9,]*)", "i");
+        const re = new RegExp(lbl.replace(/\s+/g,"\\s*") + "[^0-9]{0,1600}([0-9][0-9,]*)", "i");
         const m = text.match(re);
         if (m && m[1]) return parseInt(m[1].replace(/,/g,""), 10);
       }
 
       for (const lbl of labelVariants){
-        const re = new RegExp("([0-9][0-9,]*)[^a-zA-Z]{0,60}" + lbl.replace(/\s+/g,"\\s*"), "i");
+        const re = new RegExp("([0-9][0-9,]*)[^a-zA-Z]{0,80}" + lbl.replace(/\s+/g,"\\s*"), "i");
         const m = text.match(re);
         if (m && m[1]) return parseInt(m[1].replace(/,/g,""), 10);
       }
@@ -294,7 +287,7 @@
       return null;
     }
 
-    // 3) Scored fallback: pick the number most “near” outage/customer keywords
+    // 3) Scored fallback
     function extractByScoring(text){
       const keywords = [
         "customer","customers",
@@ -312,10 +305,10 @@
         const raw = m[1];
         const value = parseInt(raw.replace(/,/g,""), 10);
         if (!Number.isFinite(value)) continue;
-        if (value > 20000000) continue; // sanity
+        if (value > 20000000) continue;
 
         const idx = m.index;
-        const window = text.slice(Math.max(0, idx - 140), Math.min(text.length, idx + 140)).toLowerCase();
+        const window = text.slice(Math.max(0, idx - 160), Math.min(text.length, idx + 160)).toLowerCase();
 
         let score = 0;
         for (const kw of keywords) if (window.includes(kw)) score += 1;
@@ -324,7 +317,6 @@
         if (window.includes("out of service") || window.includes("without service")) score += 2;
         if (window.includes("affected")) score += 2;
 
-        // penalize “served” counts (often very large and near “customers served”)
         if (window.includes("served")) score -= 2;
 
         if (score > best.score || (score === best.score && value > (best.value ?? -1))) {
@@ -354,26 +346,14 @@
       setStatus(u.key, "Updating…", "warn");
       setDebug(u.key, u.url);
 
-      // fetch initial
-      let r = await fetchTextViaWorker(u.url, TIMEOUT_MS);
+      const r = await fetchTextViaWorker(u.url, TIMEOUT_MS);
       diagLine(u.key, `HTTP ${r.status} | ${(r.text||"").slice(0,160).replace(/\s+/g," ")}`);
+
       if (!r.ok) throw new Error(`HTTP ${r.status}\nBody (first 300): ${(r.text||"").slice(0,300)}`);
-
-      // follow meta refresh (ORU root)
-      const tgt = metaRefreshTarget(r.text);
-      if (tgt) {
-        const base = new URL(u.url);
-        const nextUrl = new URL(tgt, base).toString();
-        setDebug(u.key, nextUrl);
-
-        r = await fetchTextViaWorker(nextUrl, TIMEOUT_MS);
-        diagLine(u.key, `FOLLOW | HTTP ${r.status} | ${(r.text||"").slice(0,160).replace(/\s+/g," ")}`);
-        if (!r.ok) throw new Error(`HTTP ${r.status}\nBody (first 300): ${(r.text||"").slice(0,300)}`);
-      }
 
       const n = extractOutageTotal(r.text);
       if (!Number.isFinite(n)) {
-        const snippet = toText(r.text).slice(0, 500);
+        const snippet = toText(r.text).slice(0, 600);
         throw new Error("Could not find outage total.\nStripped text snippet:\n" + snippet);
       }
 
