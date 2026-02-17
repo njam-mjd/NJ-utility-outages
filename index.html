@@ -89,7 +89,7 @@
         <div class="small" id="totalDetail">—</div>
         <div class="err" id="totalErr"></div>
         <div class="note">
-          If you see timeouts, click a utility’s “Debug link” to see what the Worker is returning.
+          Debug links below show the exact URL being fetched (via your Worker).
         </div>
       </div>
 
@@ -101,5 +101,295 @@
               <a href="https://www.firstenergycorp.com/jersey_central_power_light.html" target="_blank" rel="noreferrer">Utility site</a>
               · <a href="#" id="dbg-jcpl" target="_blank" rel="noreferrer">Debug link</a>
             </div>
+            <div class="small mono" id="dbgtext-jcpl"></div>
           </div>
-          <div class="status"><span class="dot war
+          <div class="status"><span class="dot warn" id="dot-jcpl"></span><span id="st-jcpl">Loading…</span></div>
+        </div>
+        <div class="big" id="out-jcpl">—</div>
+        <div class="small" id="dt-jcpl">—</div>
+        <div class="err" id="err-jcpl"></div>
+      </div>
+
+      <div class="card" id="card-pseg">
+        <div class="row">
+          <div>
+            <div class="name">PSE&amp;G</div>
+            <div class="meta">
+              <a href="https://nj.pseg.com/" target="_blank" rel="noreferrer">Utility site</a>
+              · <a href="#" id="dbg-pseg" target="_blank" rel="noreferrer">Debug link</a>
+            </div>
+            <div class="small mono" id="dbgtext-pseg"></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-pseg"></span><span id="st-pseg">Loading…</span></div>
+        </div>
+        <div class="big" id="out-pseg">—</div>
+        <div class="small" id="dt-pseg">—</div>
+        <div class="err" id="err-pseg"></div>
+      </div>
+
+      <div class="card" id="card-ace">
+        <div class="row">
+          <div>
+            <div class="name">Atlantic City Electric</div>
+            <div class="meta">
+              <a href="https://www.atlanticcityelectric.com/" target="_blank" rel="noreferrer">Utility site</a>
+              · <a href="#" id="dbg-ace" target="_blank" rel="noreferrer">Debug link</a>
+            </div>
+            <div class="small mono" id="dbgtext-ace"></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-ace"></span><span id="st-ace">Loading…</span></div>
+        </div>
+        <div class="big" id="out-ace">—</div>
+        <div class="small" id="dt-ace">—</div>
+        <div class="err" id="err-ace"></div>
+      </div>
+
+      <div class="card" id="card-oru">
+        <div class="row">
+          <div>
+            <div class="name">Orange &amp; Rockland (ORU)</div>
+            <div class="meta"><a href="https://www.oru.com/en" target="_blank" rel="noreferrer">Utility site</a></div>
+          </div>
+          <div class="status"><span class="dot warn" id="dot-oru"></span><span id="st-oru">Setup needed</span></div>
+        </div>
+        <div class="big" id="out-oru">—</div>
+        <div class="small" id="dt-oru">—</div>
+        <div class="err" id="err-oru"></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      Embed:
+      <span class="mono">&lt;iframe src="https://YOURUSER.github.io/YOURREPO/" width="100%" height="520" style="border:0"&gt;&lt;/iframe&gt;</span>
+    </div>
+  </div>
+
+  <script>
+    const PROXY_PREFIX = "https://nj-outages-proxy.timesoftrenton.workers.dev/?url=";
+
+    const ENDPOINTS = {
+      jcpl: "https://kubra.io/stormcenter/api/v1/stormcenters/6c715f0e-bbec-465f-98cc-0b81623744be/views/fcd7c23d-de37-4471-8ca3-37c3260f94fa/currentState?preview=false",
+      pseg: "https://kubra.io/stormcenter/api/v1/stormcenters/79d82478-c10a-4956-a045-89de3cda618c/views/bdb7f5be-1c1a-46fa-862e-ebdf21851d2e/currentState?preview=false",
+      ace:  "https://kubra.io/stormcenter/api/v1/stormcenters/4b4c1b8f-d2fe-4d2a-877d-a704f764db98/views/addc2ec9-6104-4ea0-9da5-ff5ba896437e/currentState?preview=false"
+    };
+
+    const REFRESH_MS = 120000;
+    const FETCH_TIMEOUT_MS = 12000;
+
+    document.getElementById("refreshEvery").textContent = (REFRESH_MS/1000) + "s";
+
+    function proxied(url){ return PROXY_PREFIX + encodeURIComponent(url); }
+
+    function setInitialDebugLinks(){
+      for (const k of ["jcpl","pseg","ace"]) {
+        const u = proxied(ENDPOINTS[k]);
+        const a = document.getElementById(`dbg-${k}`);
+        if (a) a.href = u;
+        const t = document.getElementById(`dbgtext-${k}`);
+        if (t) t.textContent = u;
+      }
+    }
+    setInitialDebugLinks();
+
+    function setDot(key, state){
+      const dot = document.getElementById(`dot-${key}`);
+      dot.classList.remove("ok","warn","bad");
+      dot.classList.add(state);
+    }
+    function setStatus(key, text, state){
+      document.getElementById(`st-${key}`).textContent = text;
+      setDot(key, state);
+    }
+    function showErr(key, msg){
+      const el = document.getElementById(`err-${key}`);
+      el.style.display = "block";
+      el.textContent = msg;
+      setStatus(key, "Error", "bad");
+    }
+    function clearErr(key){
+      const el = document.getElementById(`err-${key}`);
+      el.style.display = "none";
+      el.textContent = "";
+    }
+    function fmt(n){
+      if (n === null || n === undefined || Number.isNaN(n)) return "—";
+      return new Intl.NumberFormat("en-US").format(n);
+    }
+    function toLocalTimeString(updatedRaw){
+      if (!updatedRaw) return null;
+      if (typeof updatedRaw === "number"){
+        const ms = updatedRaw < 2e10 ? updatedRaw * 1000 : updatedRaw;
+        return new Date(ms).toLocaleString();
+      }
+      const d = new Date(updatedRaw);
+      if (!Number.isNaN(d.getTime())) return d.toLocaleString();
+      return String(updatedRaw);
+    }
+
+    // IMPORTANT: always parse as JSON regardless of content-type
+    async function fetchJsonWithTimeout(targetUrl, timeoutMs){
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try{
+        const res = await fetch(proxied(targetUrl), { cache: "no-store", signal: controller.signal });
+        const bodyText = await res.text();
+
+        if (!res.ok){
+          throw new Error(`HTTP ${res.status}\nBody (first 300): ${bodyText.slice(0,300)}`);
+        }
+
+        try {
+          return JSON.parse(bodyText);
+        } catch {
+          throw new Error(`Not JSON (parse failed)\nBody (first 300): ${bodyText.slice(0,300)}`);
+        }
+      } catch (err){
+        if (err && err.name === "AbortError") throw new Error(`Timed out after ${timeoutMs/1000}s`);
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // Build data URL: ".../views/<viewId>" + "/data/<uuid>"
+    function buildDataUrl(currentStateUrl, intervalPath){
+      const base = currentStateUrl.split("/currentState?")[0];
+      return `${base}/${intervalPath}`;
+    }
+
+    // Extract outage total from interval_generation_data (schema varies)
+    function extractCustomersOut(intervalJson){
+      const preferredKeys = new Set([
+        "customersOut","customers_out","customersWithoutService",
+        "customers_without_service","customersAffected","customers_affected",
+        "affectedCustomers","affected_customers",
+        "totalCustomersAffected","total_customers_affected",
+        "custOut","cust_out"
+      ]);
+
+      let bestPreferred = null;
+      let bestAny = null;
+
+      function consider(v, isPreferred){
+        if (typeof v !== "number" || !Number.isFinite(v)) return;
+        if (v < 0 || v > 20000000) return;
+        if (isPreferred) {
+          if (bestPreferred === null || v > bestPreferred) bestPreferred = v;
+        } else {
+          if (bestAny === null || v > bestAny) bestAny = v;
+        }
+      }
+
+      (function walk(node){
+        if (!node || typeof node !== "object") return;
+        for (const [k,v] of Object.entries(node)){
+          if (typeof v === "number"){
+            consider(v, preferredKeys.has(k));
+          } else if (v && typeof v === "object"){
+            walk(v);
+          }
+        }
+      })(intervalJson);
+
+      return bestPreferred ?? bestAny;
+    }
+
+    async function getUtilityOutages(key){
+      const currentStateUrl = ENDPOINTS[key];
+
+      // 1) currentState
+      const currentState = await fetchJsonWithTimeout(currentStateUrl, FETCH_TIMEOUT_MS);
+
+      // 2) interval_generation_data pointer + updatedAt
+      const updatedAt = currentState.updatedAt || currentState.updated_at || currentState.controlCenter?.updatedAt;
+      const intervalPath = currentState?.data?.interval_generation_data;
+      if (!intervalPath) throw new Error("currentState missing data.interval_generation_data");
+
+      // 3) data file
+      const dataUrl = buildDataUrl(currentStateUrl, intervalPath);
+
+      // Update debug link/text to point at the actual data file (more useful than currentState)
+      const dbgUrl = proxied(dataUrl);
+      const a = document.getElementById(`dbg-${key}`);
+      if (a) a.href = dbgUrl;
+      const t = document.getElementById(`dbgtext-${key}`);
+      if (t) t.textContent = dbgUrl;
+
+      const intervalJson = await fetchJsonWithTimeout(dataUrl, FETCH_TIMEOUT_MS);
+
+      const customersOut = extractCustomersOut(intervalJson);
+      if (typeof customersOut !== "number"){
+        const topKeys = Object.keys(intervalJson || {}).slice(0, 40).join(", ");
+        throw new Error("Could not locate outage total in data file. Top-level keys: " + topKeys);
+      }
+
+      return { customersOut, updatedAtLocal: toLocalTimeString(updatedAt) };
+    }
+
+    async function refresh(){
+      document.getElementById("lastUpdated").textContent = "Loading…";
+
+      let total = 0;
+      let included = 0;
+      let errors = 0;
+
+      const keysToLoad = ["jcpl","pseg","ace"];
+
+      for (const key of keysToLoad){
+        clearErr(key);
+        setStatus(key, "Updating…", "warn");
+
+        try{
+          const data = await getUtilityOutages(key);
+          document.getElementById(`out-${key}`).textContent = fmt(data.customersOut);
+          document.getElementById(`dt-${key}`).textContent =
+            data.updatedAtLocal ? `Feed updated: ${data.updatedAtLocal}` : "Feed updated: —";
+          setStatus(key, "OK", "ok");
+
+          total += data.customersOut;
+          included++;
+        }catch(err){
+          const msg = (err && err.message) ? err.message : String(err);
+          showErr(key, msg + "\n\nUse the debug URL shown above to inspect what the Worker returns.");
+          document.getElementById(`out-${key}`).textContent = "—";
+          document.getElementById(`dt-${key}`).textContent = "—";
+          errors++;
+        }
+      }
+
+      // total card
+      const totalOutEl = document.getElementById("totalOut");
+      const totalDetailEl = document.getElementById("totalDetail");
+      const totalStatusDot = document.querySelector("#totalStatus .dot");
+      const totalStatusText = document.getElementById("totalStatusText");
+      const totalErrEl = document.getElementById("totalErr");
+
+      if (included > 0){
+        totalOutEl.textContent = fmt(total);
+        totalDetailEl.textContent = `Included ${included} feed(s). ${errors ? `${errors} failed.` : ""}`.trim();
+        totalStatusDot.classList.remove("ok","warn","bad");
+        totalStatusDot.classList.add(errors ? "warn" : "ok");
+        totalStatusText.textContent = errors ? "Partial" : "OK";
+        totalErrEl.style.display = "none";
+        totalErrEl.textContent = "";
+      } else {
+        totalOutEl.textContent = "—";
+        totalDetailEl.textContent = "No feeds loaded.";
+        totalStatusDot.classList.remove("ok","warn","bad");
+        totalStatusDot.classList.add("bad");
+        totalStatusText.textContent = "Not available";
+        totalErrEl.style.display = "block";
+        totalErrEl.textContent =
+          "All feeds failed. Check per-utility errors; debug URLs are printed on each card.";
+      }
+
+      document.getElementById("lastUpdated").textContent = new Date().toLocaleString();
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>
