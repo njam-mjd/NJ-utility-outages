@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NJ Power Outage Tracker | NJ.com</title>
+<meta name="description" content="Live power outage data for New Jersey from PSE&G, JCP&L, Atlantic City Electric, and Orange & Rockland. Updated every 15 minutes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --bg-card: rgba(255,255,255,0.03);
+    --border: rgba(255,255,255,0.07);
+    --text: #fff;
+    --text-dim: rgba(255,255,255,0.45);
+    --text-dimmer: rgba(255,255,255,0.25);
+    --accent: #BCD031;
+    --njcom-red: #E54B22;
+    --pseg: #E54B22;
+    --jcpl: #BCD031;
+    --ace: #00A3E0;
+    --oru: #FF8C00;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Libre Franklin', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(180deg, #222 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo {
+    background: var(--njcom-red); color: #fff;
+    font-weight: 900; font-size: 16px;
+    padding: 5px 10px; letter-spacing: -0.02em; line-height: 1;
+  }
+  .header-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+  .header-sub { font-size: 10px; color: var(--text-dim); font-weight: 400; margin-top: 2px; letter-spacing: 0.04em; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .meta { font-size: 10px; color: var(--text-dim); text-align: right; }
+  .meta .next { color: var(--accent); }
+  .btn {
+    border: none; padding: 7px 16px; font-size: 11px; font-weight: 700;
+    font-family: inherit; letter-spacing: 0.04em; cursor: pointer; border-radius: 2px;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-auto {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.6);
+  }
+  .btn-auto.on { background: rgba(188,208,49,0.12); border-color: rgba(188,208,49,0.3); color: var(--accent); }
+  .btn-fetch { background: var(--njcom-red); color: #fff; }
+  .btn-fetch:disabled { opacity: 0.5; cursor: wait; }
+
+  /* ── Main ── */
+  .main { max-width: 940px; margin: 0 auto; padding: 20px; }
+
+  /* ── Hero ── */
+  .hero {
+    background: linear-gradient(135deg, rgba(229,75,34,0.07) 0%, rgba(229,75,34,0.015) 100%);
+    border: 1px solid rgba(229,75,34,0.12);
+    padding: 28px 24px; text-align: center;
+    margin-bottom: 16px; position: relative; overflow: hidden;
+  }
+  .hero-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,0.008) 0px, rgba(255,255,255,0.008) 1px, transparent 1px, transparent 60px);
+  }
+  .hero-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: var(--njcom-red); margin-bottom: 6px; }
+  .hero-num { font-size: 64px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; transition: color 0.3s; }
+  .hero-num.empty { color: rgba(255,255,255,0.15); }
+  .hero-detail { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+  .hero-detail .pct { color: var(--njcom-red); margin-left: 6px; }
+  .hero-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--njcom-red), transparent);
+    animation: sweep 1.5s ease-in-out infinite;
+  }
+  @keyframes sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ── Utility Cards ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    padding: 16px 16px 14px; position: relative; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(255,255,255,0.12); }
+  .card-bar { position: absolute; top: 0; left: 0; width: 3px; height: 100%; }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .card-name { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+  .card-custs { font-size: 9px; color: var(--text-dimmer); margin-top: 1px; }
+  .card-link {
+    font-size: 8px; color: var(--text-dimmer); text-decoration: none;
+    border: 1px solid rgba(255,255,255,0.08); padding: 2px 5px; border-radius: 1px;
+  }
+  .card-link:hover { color: var(--text-dim); }
+  .card-num { font-size: 32px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; }
+  .card-num.empty { color: rgba(255,255,255,0.12); }
+  .card-pct { font-size: 10px; font-weight: 500; margin-top: 3px; }
+
+  /* ── Chart ── */
+  .chart-panel {
+    background: var(--bg-card); border: 1px solid var(--border);
+    padding: 16px; margin-bottom: 16px;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .panel-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-dim); }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--text-dim); }
+  .legend-dot { width: 7px; height: 7px; border-radius: 1px; }
+
+  /* ── Data Log ── */
+  .log { background: var(--bg-card); border: 1px solid var(--border); padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { text-align: right; padding: 6px 10px; font-weight: 600; font-size: 9px; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  th:first-child { text-align: left; }
+  th.col-total { color: var(--njcom-red); }
+  td { padding: 5px 10px; text-align: right; color: rgba(255,255,255,0.55); font-variant-numeric: tabular-nums; border-bottom: 1px solid rgba(255,255,255,0.025); }
+  td:first-child { text-align: left; color: var(--text-dim); }
+  td.total-val { font-weight: 700; color: var(--text); }
+
+  /* ── Footer ── */
+  .footer { text-align: center; padding: 20px 0 10px; font-size: 9px; color: var(--text-dimmer); }
+  .ai-disc { margin-top: 8px; font-style: italic; }
+
+  /* ── Mobile ── */
+  @media (max-width: 600px) {
+    .header { padding: 10px 14px; }
+    .main { padding: 14px; }
+    .hero-num { font-size: 48px; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .card-num { font-size: 26px; }
+    .legend { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">NJ.com</div>
+    <div>
+      <div class="header-title">POWER OUTAGE TRACKER</div>
+      <div class="header-sub">NEW JERSEY &middot; UPDATED EVERY 15 MINUTES</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="meta">
+      <span id="lastUpdate"></span>
+      <span id="countdown" class="next"></span>
+    </div>
+    <button id="btnAuto" class="btn btn-auto" onclick="toggleAuto()">AUTO OFF</button>
+    <button id="btnFetch" class="btn btn-fetch" onclick="fetchData()">FETCH OUTAGES</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="hero">
+    <div class="hero-grid"></div>
+    <div class="hero-label">TOTAL NEW JERSEY OUTAGES</div>
+    <div id="heroNum" class="hero-num empty">&mdash;</div>
+    <div id="heroDetail" class="hero-detail"></div>
+    <div id="heroBar" class="hero-bar" style="display:none"></div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div id="chartPanel" class="chart-panel" style="display:none">
+    <div class="panel-head">
+      <div class="panel-title">OUTAGE HISTORY (STACKED BY UTILITY)</div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <svg id="chart" viewBox="0 0 700 200" style="width:100%;height:auto"></svg>
+  </div>
+
+  <div id="logPanel" class="log" style="display:none">
+    <div class="panel-title" style="margin-bottom:10px">DATA LOG</div>
+    <table><thead id="logHead"></thead><tbody id="logBody"></tbody></table>
+  </div>
+
+  <div class="footer">
+    NJ.com Power Outage Tracker &middot; Data from utility outage APIs via Cloudflare Worker &middot; Not for emergency use &middot; Always call 911 for downed wires
+    <div class="ai-disc">This tool was built with AI assistance.</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURATION — Change this URL to your Cloudflare Worker URL
+// ═══════════════════════════════════════════════════════════════════════════
+const API_BASE = "https://nj-outage-api.YOUR_SUBDOMAIN.workers.dev";
+// ═══════════════════════════════════════════════════════════════════════════
+
+const UTILS = [
+  { id: "pseg", name: "PSE&G", color: "#E54B22", customers: 2337351, url: "https://outagecenter.pseg.com/" },
+  { id: "jcpl", name: "JCP&L", color: "#BCD031", customers: 1100000, url: "https://outages-nj.firstenergycorp.com/" },
+  { id: "ace", name: "Atlantic City Electric", color: "#00A3E0", customers: 560000, url: "https://secure.atlanticcityelectric.com/FaceBook/Pages/outagemap.aspx" },
+  { id: "oru", name: "Orange & Rockland", color: "#FF8C00", customers: 77000, url: "https://outagemap.oru.com/external/default.html" },
+];
+
+let outageData = {};
+let history = [];
+let autoMode = false;
+let autoTimer = null;
+let countdownTimer = null;
+let nextRefresh = null;
+let loading = false;
+
+// ── INIT ──
+(function init() {
+  renderCards();
+  renderLegend();
+})();
+
+// ── FETCH DATA ──
+async function fetchData() {
+  if (loading) return;
+  loading = true;
+  document.getElementById("btnFetch").disabled = true;
+  document.getElementById("btnFetch").textContent = "SEARCHING...";
+  document.getElementById("heroBar").style.display = "block";
+
+  try {
+    const res = await fetch(API_BASE + "/api/outages");
+    if (!res.ok) throw new Error("API returned " + res.status);
+    const data = await res.json();
+
+    outageData = {};
+    for (const [id, u] of Object.entries(data.utilities || {})) {
+      outageData[id] = u.customersOut ?? 0;
+    }
+
+    // Fetch history
+    try {
+      const hRes = await fetch(API_BASE + "/api/outages/history?limit=24");
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        history = (hData.history || []).map(h => ({
+          timestamp: h.timestamp,
+          total: h.totalCustomersOut,
+          utilities: h.utilities || {},
+        }));
+      }
+    } catch {}
+
+    updateUI(data.timestamp);
+  } catch (err) {
+    console.error("Fetch error:", err);
+    document.getElementById("heroNum").textContent = "API ERROR";
+    document.getElementById("heroNum").className = "hero-num empty";
+    document.getElementById("heroDetail").textContent = "Check that your Worker URL is configured correctly. Current: " + API_BASE;
+  }
+
+  loading = false;
+  document.getElementById("btnFetch").disabled = false;
+  document.getElementById("btnFetch").textContent = "FETCH OUTAGES";
+  document.getElementById("heroBar").style.display = "none";
+
+  if (autoMode) scheduleNext();
+}
+
+// ── UPDATE UI ──
+function updateUI(timestamp) {
+  const total = Object.values(outageData).reduce((a, b) => a + b, 0);
+  const totalCust = UTILS.reduce((a, b) => a + b.customers, 0);
+
+  // Hero
+  const heroNum = document.getElementById("heroNum");
+  heroNum.textContent = total.toLocaleString();
+  heroNum.className = "hero-num";
+  const pct = ((total / totalCust) * 100).toFixed(3);
+  document.getElementById("heroDetail").innerHTML =
+    "of " + totalCust.toLocaleString() + " total customers tracked" +
+    (total > 0 ? '<span class="pct">(' + pct + "% affected)</span>" : "");
+
+  // Last update
+  if (timestamp) {
+    const d = new Date(timestamp);
+    document.getElementById("lastUpdate").textContent =
+      "Updated: " + d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  }
+
+  // Cards
+  renderCards();
+
+  // Chart
+  if (history.length > 1) {
+    document.getElementById("chartPanel").style.display = "block";
+    renderChart();
+  }
+
+  // Log
+  if (history.length > 0) {
+    document.getElementById("logPanel").style.display = "block";
+    renderLog();
+  }
+}
+
+// ── RENDER CARDS ──
+function renderCards() {
+  const container = document.getElementById("cards");
+  container.innerHTML = UTILS.map(u => {
+    const count = outageData[u.id];
+    const hasData = count !== undefined;
+    const pct = hasData ? ((count / u.customers) * 100).toFixed(3) : null;
+    return `<div class="card">
+      <div class="card-bar" style="background:${u.color}"></div>
+      <div class="card-head">
+        <div>
+          <div class="card-name" style="color:${u.color}">${u.name}</div>
+          <div class="card-custs">${u.customers.toLocaleString()} customers</div>
+        </div>
+        <a href="${u.url}" target="_blank" rel="noopener" class="card-link">SOURCE ↗</a>
+      </div>
+      <div class="card-num ${hasData ? '' : 'empty'}">${hasData ? count.toLocaleString() : '—'}</div>
+      ${pct !== null ? `<div class="card-pct" style="color:${count > 0 ? u.color : 'var(--text-dimmer)'}">${count > 0 ? pct + '% affected' : 'No outages reported'}</div>` : ''}
+    </div>`;
+  }).join("");
+}
+
+// ── RENDER LEGEND ──
+function renderLegend() {
+  document.getElementById("legend").innerHTML = UTILS.map(u =>
+    `<div class="legend-item"><div class="legend-dot" style="background:${u.color}"></div>${u.name}</div>`
+  ).join("");
+}
+
+// ── RENDER CHART ──
+function renderChart() {
+  const svg = document.getElementById("chart");
+  const w = 700, h = 200;
+  const pad = { top: 16, right: 16, bottom: 32, left: 50 };
+  const cw = w - pad.left - pad.right;
+  const ch = h - pad.top - pad.bottom;
+  const maxVal = Math.max(...history.map(d => d.total), 1);
+
+  let html = "";
+
+  // Grid lines
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (i / 4) * ch;
+    const val = Math.round(maxVal - (i / 4) * maxVal);
+    html += `<line x1="${pad.left}" y1="${y}" x2="${w - pad.right}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-dasharray="2,4"/>`;
+    html += `<text x="${pad.left - 6}" y="${y + 3}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="10" font-family="'Libre Franklin',sans-serif">${val.toLocaleString()}</text>`;
+  }
+
+  // Time labels
+  history.forEach((d, i) => {
+    if (i % Math.max(1, Math.floor(history.length / 6)) !== 0 && i !== history.length - 1) return;
+    const x = pad.left + (i / (history.length - 1)) * cw;
+    const t = new Date(d.timestamp);
+    html += `<text x="${x}" y="${h - 6}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="9" font-family="'Libre Franklin',sans-serif">${t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}</text>`;
+  });
+
+  // Stacked areas (draw in reverse so first utility is on bottom)
+  [...UTILS].reverse().forEach((util, ri) => {
+    const uIdx = UTILS.length - 1 - ri;
+    const upper = history.map((d, i) => {
+      const x = pad.left + (i / (history.length - 1)) * cw;
+      let stack = 0;
+      for (let j = 0; j <= uIdx; j++) stack += d.utilities[UTILS[j].id] || 0;
+      return { x, y: pad.top + ch - (stack / maxVal) * ch };
+    });
+    const lower = history.map((d, i) => {
+      const x = pad.left + (i / (history.length - 1)) * cw;
+      let stack = 0;
+      for (let j = 0; j < uIdx; j++) stack += d.utilities[UTILS[j].id] || 0;
+      return { x, y: pad.top + ch - (stack / maxVal) * ch };
+    });
+    const path = upper.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join("") +
+      lower.reverse().map(p => `L${p.x},${p.y}`).join("") + "Z";
+    html += `<path d="${path}" fill="${util.color}" fill-opacity="0.3"/>`;
+  });
+
+  // Total line
+  if (history.length > 1) {
+    const pts = history.map((d, i) => {
+      const x = pad.left + (i / (history.length - 1)) * cw;
+      const y = pad.top + ch - (d.total / maxVal) * ch;
+      return `${x},${y}`;
+    }).join(" ");
+    html += `<polyline points="${pts}" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>`;
+  }
+
+  svg.innerHTML = html;
+}
+
+// ── RENDER LOG ──
+function renderLog() {
+  document.getElementById("logHead").innerHTML = `<tr>
+    <th style="text-align:left;color:var(--text-dim)">TIME</th>
+    <th class="col-total">TOTAL</th>
+    ${UTILS.map(u => `<th style="color:${u.color}">${u.name}</th>`).join("")}
+  </tr>`;
+  document.getElementById("logBody").innerHTML = [...history].reverse().map(entry => {
+    const t = new Date(entry.timestamp);
+    const time = t.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+    return `<tr>
+      <td>${time}</td>
+      <td class="total-val">${entry.total.toLocaleString()}</td>
+      ${UTILS.map(u => `<td>${(entry.utilities[u.id] || 0).toLocaleString()}</td>`).join("")}
+    </tr>`;
+  }).join("");
+}
+
+// ── AUTO MODE ──
+function toggleAuto() {
+  autoMode = !autoMode;
+  const btn = document.getElementById("btnAuto");
+  btn.textContent = autoMode ? "AUTO 15m" : "AUTO OFF";
+  btn.className = "btn btn-auto" + (autoMode ? " on" : "");
+  if (autoMode) {
+    fetchData();
+  } else {
+    clearTimeout(autoTimer);
+    clearInterval(countdownTimer);
+    document.getElementById("countdown").textContent = "";
+  }
+}
+
+function scheduleNext() {
+  clearTimeout(autoTimer);
+  clearInterval(countdownTimer);
+  nextRefresh = Date.now() + 15 * 60 * 1000;
+  countdownTimer = setInterval(() => {
+    const diff = nextRefresh - Date.now();
+    if (diff <= 0) {
+      document.getElementById("countdown").textContent = "Refreshing...";
+      clearInterval(countdownTimer);
+    } else {
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      document.getElementById("countdown").textContent = " · Next: " + m + ":" + String(s).padStart(2, "0");
+    }
+  }, 1000);
+  autoTimer = setTimeout(fetchData, 15 * 60 * 1000);
+}
+</script>
+</body>
+</html>
