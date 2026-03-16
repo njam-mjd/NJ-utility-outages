@@ -186,6 +186,31 @@
   td:first-child { text-align: left; color: var(--text-light); }
   td.total-val { font-weight: 700; color: var(--text); }
 
+
+  /* ── Collapsible Panels ── */
+  .panel-toggle {
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; user-select: none;
+    margin-bottom: 0;
+  }
+  .panel-toggle:hover .panel-title { color: var(--text-mid); }
+  .panel-toggle .arrow {
+    font-size: 14px; color: var(--text-light);
+    transition: transform 0.3s ease;
+    margin-left: 8px;
+  }
+  .panel-toggle.open .arrow { transform: rotate(180deg); }
+  .panel-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.3s ease;
+    opacity: 0;
+  }
+  .panel-content.open {
+    max-height: 2000px;
+    opacity: 1;
+  }
+
   /* ── Footer ── */
   .footer {
     text-align: center; padding: 20px 20px 16px;
@@ -241,16 +266,30 @@
     <div class="cards" id="cards"></div>
 
     <div id="chartPanel" class="panel" style="display:none">
-      <div class="panel-head">
-        <div class="panel-title">Outage history</div>
-        <div class="legend" id="legend"></div>
+      <div class="panel-toggle" onclick="togglePanel('chart')">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="panel-title">Outage history</div>
+          <div class="legend" id="legend"></div>
+        </div>
+        <span class="arrow">&#9660;</span>
       </div>
-      <svg id="chart" viewBox="0 0 680 200" style="width:100%;height:auto"></svg>
+      <div id="chartContent" class="panel-content">
+        <div style="padding-top:14px">
+          <svg id="chart" viewBox="0 0 680 200" style="width:100%;height:auto"></svg>
+        </div>
+      </div>
     </div>
 
-    <div id="logPanel" class="panel" style="display:none;overflow-x:auto">
-      <div class="panel-title" style="margin-bottom:12px">Data log</div>
-      <table><thead id="logHead"></thead><tbody id="logBody"></tbody></table>
+    <div id="logPanel" class="panel" style="display:none">
+      <div class="panel-toggle" onclick="togglePanel('log')">
+        <div class="panel-title">Data log</div>
+        <span class="arrow">&#9660;</span>
+      </div>
+      <div id="logContent" class="panel-content">
+        <div style="padding-top:12px;overflow-x:auto">
+          <table><thead id="logHead"></thead><tbody id="logBody"></tbody></table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -267,6 +306,13 @@
 // ═══════════════════════════════════════════════════════════════════
 const API_BASE = "https://nj-outage-api.timesoftrenton.workers.dev";
 // ═══════════════════════════════════════════════════════════════════
+
+function togglePanel(id) {
+  const content = document.getElementById(id + 'Content');
+  const toggle = content.parentElement.querySelector('.panel-toggle');
+  content.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
 
 const UTILS = [
   { id: "pseg", name: "PSE&G", color: "#c0392b", colorLight: "#fdecea", customers: 2337351, url: "https://outagecenter.pseg.com/" },
